@@ -1104,7 +1104,7 @@ function renderDeck() {
     ${note ? `<div class="notechip">Note: ${esc(note)}</div>` : ""}
     <div class="actions">
       <button class="act no" data-act="changes"><i>✎</i>Changes</button>
-      <button class="act small" data-act="notes"><i>🎙</i>Notes</button>
+      <button class="act small" data-act="notes"><i>✎</i>Notes</button>
       <button class="act small" data-act="later"><i>↑</i>Later</button>
       <button class="act yes" data-act="approve"><i>✓</i>${top.versions[top.versions.length - 1].kind === "choice" ? "Go" : "Approve"}</button>
     </div>`;
@@ -1298,7 +1298,7 @@ function openSheet(kind, it, el) {
   const v = it.versions[it.versions.length - 1];
   const title = kind === "notes" ? "Notes for the agent" : "What should change?";
   $("#sheet").innerHTML = `<div class="panel">
-    <h3>${title}</h3><div class="hint">${kind === "notes" ? "Swipe right or tap Approve after this: the agent applies these notes without sending it back." : "Tap the box and talk. The agent makes a new version and it comes back to you."}</div>
+    <h3>${title}</h3><div class="hint">${kind === "notes" ? "Tap the mic on your keyboard to dictate. Then Approve: the agent applies these notes without sending it back." : "Tap the mic on your keyboard to dictate. The agent makes a new version and it comes back to you."}</div>
     <textarea id="sheetfb" placeholder="${kind === "notes" ? "e.g. nudge the logo left" : "e.g. the headline is too small on mobile"}">${esc(deckNotes[it.id] || "")}</textarea>
     <div class="row2">${kind === "notes"
       ? `<button class="btn" data-s="cancel" style="background:var(--surface-3)">Done</button><button class="btn approve" data-s="approve">Approve with notes</button>`
