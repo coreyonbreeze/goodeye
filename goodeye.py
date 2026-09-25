@@ -9,17 +9,21 @@
   goodeye serve [--port 4400]      run the board (submit starts it if it is down)
   goodeye open                     open the board in the browser
   goodeye demo                     load sample items so you can try the board
+  goodeye phone [--off]            let your phone open the board over Wi-Fi (token-protected, prints a QR code)
 
 Store: $GOODEYE_HOME (default ~/.goodeye). Port: $GOODEYE_PORT (default 4400). Python 3.9+, standard library only.
 """
-import argparse, datetime, threading, http.server, webbrowser, zlib, struct, json, mimetypes, os, re, shutil, socket, subprocess, sys, time, urllib.parse, uuid
+import argparse, datetime, threading, http.server, http.cookies, webbrowser, zlib, struct, secrets, hmac, gzip, hashlib, io, json, mimetypes, os, re, shutil, socket, subprocess, sys, time, urllib.parse, uuid
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 HOME = os.path.expanduser(os.environ.get("GOODEYE_HOME", "~/.goodeye"))
 ASSETS = os.path.join(HOME, "assets")
 DECISIONS = os.path.join(HOME, "decisions.jsonl")
 DELIVERED = os.path.join(HOME, "delivered.json")
+CONFIG = os.path.join(HOME, "config.json")
+TOKEN_FILE = os.path.join(HOME, "phone-token")
 HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
 PORT = int(os.environ.get("GOODEYE_PORT", "4400"))
 URL = f"http://localhost:{PORT}"
 CONTEXTS = ["linkedin-banner", "linkedin-post", "x-banner", "x-post", "instagram-post", "instagram-story", "email",
@@ -28,7 +32,7 @@ OPEN = ("pending", "changes")          # still competing in a slot
 FILLED = ("approved", "picked")       # holds a slot
 LOCK = threading.Lock()
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,80}$")
-VERDICTS = ("approved", "changes", "rejected", "picked", "not_chosen")
+VERDICTS = ("approved", "changes", "rejected", "picked", "not_chosen", "reopened")
 MAX_BODY = 1 << 20
 for ext, typ in ((".webp", "image/webp"), (".avif", "image/avif"), (".mp4", "video/mp4"), (".m4v", "video/mp4"),
                  (".webm", "video/webm"), (".mov", "video/quicktime"), (".svg", "image/svg+xml")):
@@ -105,7 +109,8 @@ def all_items():
                 continue
             for v in vs:
                 v["decisions"] = by_key.get(f'{asset_id}@{v["version"]}', [])
-                v["status"] = v["decisions"][-1]["verdict"] if v["decisions"] else "pending"
+                last = v["decisions"][-1]["verdict"] if v["decisions"] else "pending"
+                v["status"] = "pending" if last == "reopened" else last
             latest = vs[-1]
             items.append({"id": asset_id, "project": latest.get("project", ""), "title": latest.get("title", asset_id),
                           "status": latest["status"], "updated": latest["submitted_at"], "slot": latest.get("slot"), "versions": vs})
@@ -322,6 +327,8 @@ def cmd_wait(a):
                         print(f"  next: {what} is approved as is. Record it in the project's approval record, then do the follow-up work.")
                     if d["verdict"] == "picked":
                         print("        Pick 2 is the fallback if pick 1 cannot work.")
+                elif d["verdict"] == "reopened":
+                    print("  next: REOPENED. The reviewer brought this back into review. Do not change it yet; wait for its verdict.")
                 elif d["verdict"] == "not_chosen":
                     print(f"  next: NOT CHOSEN. {d['feedback']} Stop work on this asset. Do not resubmit it.")
                 elif d["verdict"] == "changes":
@@ -369,6 +376,91 @@ def ensure_server():
         time.sleep(0.1)
 
 
+# ---------- phone access ----------
+
+def load_config():
+    return read_json(CONFIG, {}) or {}
+
+
+def phone_token():
+    """A random secret for phone access. Stored readable by this user only."""
+    tok = None
+    try:
+        with open(TOKEN_FILE) as f:
+            tok = f.read().strip()
+    except OSError:
+        pass
+    if not tok:
+        tok = secrets.token_urlsafe(24)
+        fd = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(tok)
+    return tok
+
+
+def lan_addresses():
+    """This machine's Wi-Fi/LAN address, plus a Tailscale address when Tailscale is installed."""
+    out = []
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("10.255.255.255", 1))    # no packet is sent; this only picks the outgoing interface
+        out.append(("Wi-Fi", s.getsockname()[0]))
+    except OSError:
+        pass
+    finally:
+        s.close()
+    if shutil.which("tailscale"):
+        try:
+            ip = subprocess.run(["tailscale", "ip", "-4"], capture_output=True, text=True, timeout=5).stdout.split()
+            if ip:
+                out.append(("Tailscale", ip[0]))
+        except (subprocess.SubprocessError, OSError):
+            pass
+    return [(label, ip) for label, ip in out if not ip.startswith("127.")]
+
+
+def phone_urls(port=None):
+    tok = phone_token()
+    return [(label, f"http://{ip}:{port or PORT}/?t={tok}") for label, ip in lan_addresses()]
+
+
+ICON_CACHE = {}
+
+
+def png_bytes(w, h, draw):
+    buf = io.BytesIO()
+    raw = b"".join(b"\x00" + bytes(c for x in range(w) for c in draw(x, y)) for y in range(h))
+    chunk = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
+    buf.write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+              + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
+    return buf.getvalue()
+
+
+def app_icon(size):
+    """The home-screen icon: a 3x3 tile grid, the same mark as the board's idle screen."""
+    if size not in ICON_CACHE:
+        colors = [(27, 175, 122), (42, 120, 214), (27, 175, 122), (237, 161, 0), (27, 175, 122), (235, 104, 52),
+                  (27, 175, 122), (42, 120, 214), (27, 175, 122)]
+        bg, cell = (17, 17, 17), size / 4.2
+        off = (size - cell * 3 - cell * 0.3 * 2) / 2
+
+        def draw(x, y):
+            for i in range(9):
+                cx, cy = off + (i % 3) * cell * 1.15, off + (i // 3) * cell * 1.15
+                if cx <= x < cx + cell and cy <= y < cy + cell:
+                    return colors[i]
+            return bg
+        ICON_CACHE[size] = png_bytes(size, size, draw)
+    return ICON_CACHE[size]
+
+
+MANIFEST = {"name": "GoodEye", "short_name": "GoodEye", "start_url": "/", "display": "standalone",
+            "background_color": "#111111", "theme_color": "#111111",
+            "icons": [{"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"},
+                      {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"}]}
+LAN = False     # set at serve time from config.json
+
+
 BOARD_CSP = ("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' blob: data:; "
              "media-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
 
@@ -380,19 +472,51 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
-    def allowed_host(self):
-        """Refuse requests whose Host is not this machine: blocks DNS-rebinding pages from reading the board."""
+    def client_is_local(self):
+        return self.client_address[0] in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
+
+    def host_is_local(self):
         host = (self.headers.get("Host") or "").lower()
         port = self.server.server_address[1]
         return host in {f"localhost:{port}", f"127.0.0.1:{port}", f"[::1]:{port}"}
 
+    def has_token(self):
+        jar = http.cookies.SimpleCookie()
+        try:
+            jar.load(self.headers.get("Cookie") or "")
+        except http.cookies.CookieError:
+            return False
+        tok = jar.get("goodeye")
+        return bool(tok) and hmac.compare_digest(tok.value, phone_token())
+
+    def allowed_host(self):
+        """Who may use the board.
+        This machine: only when the request really comes from loopback AND names a loopback host (blocks DNS rebinding).
+        A phone: only in phone mode, and only with the secret token cookie."""
+        if self.host_is_local():
+            return self.client_is_local()
+        return LAN and self.has_token()
+
     def allowed_origin(self):
-        """Writes must come from the board itself. Browsers always send Origin on cross-site POSTs."""
+        """Writes must come from the board page itself. Browsers always send Origin on cross-site POSTs."""
         origin = self.headers.get("Origin")
         if origin is None:
-            return True   # same-origin fetch in some browsers, or a CLI client
-        port = self.server.server_address[1]
-        return origin.lower() in {f"http://localhost:{port}", f"http://127.0.0.1:{port}", f"http://[::1]:{port}"}
+            return self.client_is_local() and self.host_is_local()   # a CLI client on this machine
+        return origin.lower() == "http://" + (self.headers.get("Host") or "").lower()
+
+    def token_login(self):
+        """/?t=TOKEN from the QR code: set a long-lived cookie, then redirect so the token leaves the address bar."""
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        tok = (q.get("t") or [""])[0]
+        if not (LAN and tok and hmac.compare_digest(tok, phone_token())):
+            return False
+        self.send_response(303)
+        self.send_header("Location", "/")
+        self.send_header("Set-Cookie", f"goodeye={tok}; Max-Age=31536000; Path=/; HttpOnly; SameSite=Strict")
+        self.send_header("Content-Length", "0")
+        self.common_headers()
+        self.end_headers()
+        return True
 
     def common_headers(self):
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -400,13 +524,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Cross-Origin-Resource-Policy", "same-origin")
 
-    def send(self, code, body, ctype="application/json", csp=None):
+    def send(self, code, body, ctype="application/json", csp=None, cache="no-cache"):
+        """JSON and HTML get an ETag (unchanged data costs a 304 and no body) and gzip when the client accepts it."""
         if isinstance(body, (dict, list)):
-            body = json.dumps(body).encode()
+            body = json.dumps(body, separators=(",", ":")).encode()
+        etag = '"' + hashlib.sha1(body).hexdigest()[:20] + '"' if code == 200 else None
+        if etag and self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", cache)
+            self.common_headers()
+            self.end_headers()
+            return
+        gz = len(body) > 1024 and "gzip" in (self.headers.get("Accept-Encoding") or "") and not ctype.startswith("image/")
+        if gz:
+            body = gzip.compress(body, 6)
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache)
+        self.send_header("Vary", "Accept-Encoding, Cookie")
+        if etag:
+            self.send_header("ETag", etag)
+        if gz:
+            self.send_header("Content-Encoding", "gzip")
         self.common_headers()
         if csp:
             self.send_header("Content-Security-Policy", csp)
@@ -414,9 +555,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if not self.host_is_local() and self.token_login():
+            return
         if not self.allowed_host():
-            return self.send(403, {"error": "forbidden host"})
+            return self.send(403, b"GoodEye: open the link from `goodeye phone` on this device first.", "text/plain; charset=utf-8")
         path = urllib.parse.urlparse(self.path).path
+        if path == "/manifest.webmanifest":
+            return self.send(200, json.dumps(MANIFEST).encode(), "application/manifest+json")
+        if path in ("/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"):
+            return self.send(200, app_icon(512 if "512" in path else 192 if "192" in path else 180), "image/png", cache="max-age=86400")
+        if path == "/api/pair":
+            if not self.client_is_local():
+                return self.send(403, {"error": "pair from this computer"})
+            urls = phone_urls(self.server.server_address[1]) if LAN else []
+            from goodeye_qr import qr_matrix, to_svg
+            return self.send(200, {"lan": LAN, "urls": [{"label": l, "url": u, "svg": to_svg(qr_matrix(u))} for l, u in urls]})
         if path in ("/", "/index.html"):
             with open(os.path.join(HERE, "board.html"), "rb") as f:
                 return self.send(200, f.read(), "text/html; charset=utf-8", csp=BOARD_CSP)
@@ -456,7 +609,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.common_headers()
         # Uploaded files never run code: an SVG opened directly gets a sandboxed, script-free origin.
         self.send_header("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'")
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", "private, max-age=31536000, immutable")   # versions are frozen, so files never change
         self.send_header("Content-Type", ctype)
         self.send_header("Accept-Ranges", "bytes")
         self.send_header("Content-Length", str(end - start + 1))
@@ -507,6 +660,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         meta = next((v for v in versions_of(str(body.get("id", ""))) if v["version"] == body.get("version")), None)
         if not meta:
             return self.send(404, {"error": "unknown asset version"})
+        if verdict == "reopened":
+            cur = next((i for i in all_items() if i["id"] == meta["id"]), None)
+            if not cur or cur["versions"][-1]["version"] != meta["version"] or cur["status"] not in ("rejected", "not_chosen"):
+                return self.send(400, {"error": "only a rejected or not-chosen latest version can be reopened"})
         d = {"decision_id": uuid.uuid4().hex, "id": meta["id"], "version": meta["version"], "dir": meta["dir"],
              "project": meta.get("project", ""), "verdict": verdict, "feedback": feedback, "at": now()}
         if meta.get("kind") == "choice":
@@ -635,24 +792,61 @@ def decide_local(asset_id, version, verdict, feedback):
 
 def watch_code():
     """Restart the server in place when this file changes (git pull), so an update never leaves a stale server."""
-    me = os.path.realpath(__file__)
-    start = os.path.getmtime(me)
+    watched = [os.path.realpath(__file__), os.path.join(HERE, "goodeye_qr.py"), CONFIG]
+    stamp = lambda: [os.path.getmtime(p) if os.path.exists(p) else 0 for p in watched]
+    start = stamp()
     while True:
         time.sleep(2)
         try:
-            if os.path.getmtime(me) != start:
-                print("goodeye.py changed; restarting", flush=True)
-                os.execv(sys.executable, [sys.executable, me] + sys.argv[1:])
+            if stamp() != start:
+                print("code or config changed; restarting", flush=True)
+                os.execv(sys.executable, [sys.executable, watched[0]] + sys.argv[1:])
         except OSError:
             pass
 
 
 def cmd_serve(a):
+    global LAN
+    LAN = bool(load_config().get("lan"))
+    if LAN:
+        phone_token()
     threading.Thread(target=watch_code, daemon=True).start()
     http.server.ThreadingHTTPServer.allow_reuse_address = True
-    srv = http.server.ThreadingHTTPServer(("127.0.0.1", a.port), Handler)   # loopback only, never the network
-    print(f"GoodEye board on http://localhost:{a.port}  (store: {HOME})", flush=True)
+    # Loopback only unless phone mode is on. In phone mode every non-local request needs the token cookie.
+    srv = http.server.ThreadingHTTPServer(("0.0.0.0" if LAN else "127.0.0.1", a.port), Handler)
+    print(f"GoodEye board on http://localhost:{a.port}  (store: {HOME}, phone mode {'on' if LAN else 'off'})", flush=True)
     srv.serve_forever()
+
+
+def cmd_phone(a):
+    """Turn phone mode on or off, restart the board, and print the link and QR code."""
+    from goodeye_qr import qr_matrix, to_terminal
+    cfg = load_config()
+    want = not a.off
+    if a.new_token and os.path.exists(TOKEN_FILE):
+        os.remove(TOKEN_FILE)          # every phone must scan again
+    if cfg.get("lan") != want:
+        cfg["lan"] = want
+        write_json(CONFIG, cfg)
+        if port_open():
+            time.sleep(3)              # the running board restarts itself when config.json changes
+    ensure_server()
+    for _ in range(50):
+        if port_open():
+            break
+        time.sleep(0.1)
+    if not want:
+        print("Phone mode off. The board only answers this computer again.")
+        return
+    urls = phone_urls()
+    if not urls:
+        die("no Wi-Fi or LAN address found. Connect to a network and try again.")
+    print("Phone mode on. Scan with your phone's camera (same Wi-Fi as this computer):\n")
+    print(to_terminal(qr_matrix(urls[0][1])))
+    for label, url in urls:
+        print(f"\n  {label}: {url}")
+    print("\nThe link signs your phone in once. Keep it private: anyone on your network with it can review.")
+    print("Tip: add the page to your home screen. `goodeye phone --off` turns this off; `--new-token` signs every phone out.")
 
 
 def main():
@@ -681,6 +875,9 @@ def main():
     sv.add_argument("--port", type=int, default=PORT)
     sub.add_parser("open")
     sub.add_parser("demo", help="load sample items into the store so you can try the board")
+    ph = sub.add_parser("phone", help="let your phone open the board over Wi-Fi")
+    ph.add_argument("--off", action="store_true", help="turn phone mode off")
+    ph.add_argument("--new-token", action="store_true", help="make a new link; every phone must scan again")
     sl = sub.add_parser("slot", help="put existing items into one slot")
     sl.add_argument("key")
     sl.add_argument("ids", nargs="+")
@@ -690,7 +887,7 @@ def main():
         ensure_server()
         webbrowser.open(URL)
         return
-    {"submit": cmd_submit, "demo": cmd_demo, "slot": cmd_slot, "wait": cmd_wait, "status": cmd_status, "serve": cmd_serve}[a.cmd](a)
+    {"submit": cmd_submit, "demo": cmd_demo, "phone": cmd_phone, "slot": cmd_slot, "wait": cmd_wait, "status": cmd_status, "serve": cmd_serve}[a.cmd](a)
 
 
 if __name__ == "__main__":

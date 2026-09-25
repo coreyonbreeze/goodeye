@@ -105,6 +105,27 @@ Metrics with the same `group` share one chart. `bar` draws the pass line and fla
 | Go with 1st pick (choice) | Build pick 1, apply any notes (a note on another option means take that part from it). Pick 2 is the fallback. |
 | Revise, show me again (choice) | Build from your picks, or offer new options if you picked none, and resubmit. |
 | Approve, in a slot | The other candidates in the slot are closed as *not chosen*. |
+| Reopen (on a rejected or not-chosen item) | It is back in review; wait for the next verdict. |
+
+## On your phone
+
+```bash
+goodeye phone        # prints a QR code; scan it with your phone's camera
+```
+
+Phone mode lets devices on your Wi-Fi (or your Tailscale network) open the board. The QR link carries a random secret that signs the phone in once, with an `HttpOnly`, `SameSite=Strict` cookie; without it every request gets 403. `goodeye phone --off` returns to this-computer-only, and `--new-token` signs every phone out. The desktop board's **Phone** button shows the same QR code.
+
+On a phone the board is a card deck:
+
+<p><img src="docs/phone-deck.jpg" width="240" alt="Card deck on a phone"> <img src="docs/phone-swipe.jpg" width="240" alt="Swiping right to approve"></p>
+
+
+- **Swipe right** approves (a dictated note rides along as "approve with notes"). **Swipe left** asks what should change, with *Reject* as a secondary option. **Swipe up** puts the card at the back.
+- **Tap the image** to page through the asset, the previous version, and each placement mockup. **Tap the text** to expand the reasoning and every score with its change since the last version.
+- Every verdict waits 4 seconds with **Undo** (8 seconds when the judge scored it below the bar). Approving in a slot asks first and lists what will close. Closed items can be **reopened**.
+- Choices: tap options to rank, swipe right to go with your 1st pick.
+- Haptics mark the commit point of a swipe and each verdict (Android vibration; iPhone on iOS 18+ uses the system switch haptic).
+- Add it to your home screen for a full-screen app. **Details** (or the ☰ queue) opens the full layout.
 
 ## Keyboard
 
@@ -112,7 +133,7 @@ Metrics with the same `group` share one chart. `bar` draws the pass line and fla
 
 ## Privacy and security
 
-Everything stays on your machine: the board listens on `127.0.0.1` only, makes no network calls, and has no telemetry. It refuses cross-site writes and DNS-rebinding reads, cannot be framed, and serves uploaded files in a sandbox. Details in [SECURITY.md](SECURITY.md). Your store (`~/.goodeye`) holds copies of the submitted files and your verdicts; nothing is committed to this repository.
+Everything stays on your machine: by default the board listens on `127.0.0.1` only (phone mode opens it to your network behind a secret token), makes no outside network calls, and has no telemetry. It refuses cross-site writes and DNS-rebinding reads, cannot be framed, and serves uploaded files in a sandbox. Details in [SECURITY.md](SECURITY.md). Your store (`~/.goodeye`) holds copies of the submitted files and your verdicts; nothing is committed to this repository.
 
 ## Roadmap
 

@@ -2,7 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111111">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GoodEye">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/icon-192.png">
 <title>GoodEye</title>
 <style>
 :root {
@@ -32,7 +40,18 @@ body { background: var(--bg); color: var(--text-primary); font: 14px/1.45 -apple
 button, textarea { font: inherit; color: inherit; }
 .app { display: grid; grid-template-columns: 300px minmax(0, 1fr) 390px; height: 100vh; }
 @media (max-width: 1200px) { .app { grid-template-columns: 260px minmax(0, 1fr); } .side { grid-column: 2; } .app { height: auto; } }
-@media (max-width: 760px) { .app { grid-template-columns: 1fr; } .side { grid-column: 1; } .queue { max-height: 40vh; } }
+#topbar, #scrim { display: none; }
+.fit { width: 100%; overflow: hidden; }
+.fit-in { width: max-content; transform-origin: top left; }
+.qhead { display: flex; justify-content: space-between; align-items: center; margin: 0 0 10px; }
+.qhead h1 { margin: 0 !important; }
+.phonebtn { background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 12px; cursor: pointer; color: var(--text-secondary); }
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
+.modal .box { background: var(--surface-1); border: 1px solid var(--line); border-radius: 12px; padding: 20px; max-width: 420px; width: 100%; text-align: center; }
+.modal .box svg { width: 220px; height: 220px; border-radius: 8px; }
+.modal code { background: var(--surface-2); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+.modal .url { font-size: 11px; color: var(--text-muted); word-break: break-all; margin: 8px 0; }
+button, .chip, .row, .opt, .sthumb { touch-action: manipulation; }
 
 /* queue */
 .queue { background: var(--surface-1); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
@@ -167,6 +186,7 @@ table.delta td { white-space: nowrap; text-align: right; padding: 4px; border-bo
 .picks { font-size: 13px; margin-bottom: 6px; color: var(--text-secondary); }
 .picks b { color: var(--text-primary); }
 .btn .sub { display: block; font-weight: 400; font-size: 11px; opacity: .85; }
+.btn .short { display: none; }
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--surface-3); border: 1px solid var(--line); padding: 10px 16px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
 .toast.show { opacity: 1; }
 
@@ -194,13 +214,169 @@ table.delta td { white-space: nowrap; text-align: right; padding: 4px; border-bo
 .dots { display: flex; gap: 6px; } .dots i { width: 11px; height: 11px; border-radius: 50%; background: #c2bfb9; }
 .url { flex: 1; background: #fff; border-radius: 6px; height: 24px; }
 .mock-note { font-size: 12px; color: var(--text-muted); max-width: 620px; text-align: center; }
+
+/* ---------- phone ---------- */
+@media (max-width: 760px) {
+  html, body { height: auto; }
+  body { padding-bottom: calc(var(--dh, 150px) + 8px); -webkit-text-size-adjust: 100%; }
+  .app { display: block; height: auto; }
+  #topbar { display: flex; position: sticky; top: 0; z-index: 30; align-items: center; gap: 12px; background: var(--surface-1); border-bottom: 1px solid var(--line);
+    padding: calc(env(safe-area-inset-top) + 8px) 12px 8px; font-size: 15px; }
+  #topbar button { background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 15px; min-height: 40px; }
+  #qcount:not(:empty) { background: var(--accent); color: #fff; border-radius: 999px; padding: 1px 7px; font-size: 12px; margin-left: 4px; }
+  #qpos { margin-left: auto; color: var(--text-muted); font-size: 13px; }
+  .queue { position: fixed; inset: 0 auto 0 0; width: min(86vw, 340px); z-index: 40; transform: translateX(-102%); transition: transform .22s ease;
+    padding-top: env(safe-area-inset-top); box-shadow: 8px 0 30px rgba(0,0,0,.4); }
+  body.qopen .queue { transform: none; }
+  #scrim { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 35; }
+  body.qopen #scrim { display: block; }
+  .row { padding: 10px 8px; }
+  .phonebtn { display: none; }
+  .main { display: block; }
+  .head { padding: 12px 14px 4px; }
+  .head h2 { font-size: 17px; }
+  .bar { flex-wrap: nowrap; overflow-x: auto; padding: 6px 14px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .bar::-webkit-scrollbar { display: none; }
+  .chip { flex: none; padding: 7px 12px; font-size: 13px; }
+  .bar [data-cols] { display: none; }
+  .stage { display: block; overflow: visible; padding: 10px 12px; }
+  .stage > .pane + .pane { margin-top: 14px; }
+  .raw { max-height: 62vh; max-height: 62dvh; margin: 0 auto; }
+  .slotbar, .filled { margin-left: 12px; margin-right: 12px; }
+  .sthumbs { flex-wrap: nowrap; overflow-x: auto; }
+  .sthumb { flex: none; }
+  .opts { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .pbar { padding: 8px 12px; gap: 8px; }
+  .pbar button { min-width: 40px; min-height: 36px; }
+  .pbar .scrub { flex-basis: 100%; order: -1; height: 28px; }
+  .pbar .frm, .pbar .fileloop { font-size: 11px; }
+  .decide { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; grid-template-columns: 1fr; gap: 8px;
+    padding: 8px 12px calc(env(safe-area-inset-bottom) + 8px); box-shadow: 0 -8px 24px rgba(0,0,0,.35); }
+  .decide textarea { min-height: 44px; height: 44px; font-size: 16px; padding: 10px 12px; transition: height .15s; }
+  .decide textarea:focus, .decide textarea.filled { height: 96px; }
+  .decide .note, .btn kbd, .btn .sub, .btn .full { display: none; }
+  .btn .short { display: inline; }
+  .btns { flex-direction: row; gap: 8px; }
+  .btn { min-width: 0; flex: 1; min-height: 50px; justify-content: center; align-items: center; font-size: 15px; padding: 8px; border-radius: 10px; }
+  .btn.approve { flex: 1.4; }
+  .picks { margin: 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .confirm ul { flex-wrap: nowrap; overflow-x: auto; }
+  .confirm .acts .btn { min-height: 48px; }
+  .side { border-left: 0; border-top: 1px solid var(--line); padding: 8px 14px 24px; }
+  .card { margin-bottom: 4px; border-bottom: 1px solid var(--grid); }
+  .card h3 { padding: 12px 0; margin: 0; cursor: pointer; display: flex; justify-content: space-between; }
+  .card h3::after { content: "▾"; transition: transform .15s; }
+  .card.shut h3::after { transform: rotate(-90deg); }
+  .card.shut > :not(h3) { display: none; }
+  .card > :last-child { margin-bottom: 12px; }
+  .idle { padding: 48px 16px; }
+  .modal .box svg { width: 70vw; height: 70vw; }
+}
+@media (max-width: 420px) { .opts { grid-template-columns: 1fr !important; } }
+#cardsbtn { display: none; }
+@media (max-width: 760px) {
+  body.deckmode .app { display: none; }
+  body.deckmode .toast { bottom: calc(env(safe-area-inset-bottom) + 104px); z-index: 70; max-width: calc(100% - 24px); text-align: center; }
+  body.deckmode { padding-bottom: 0; overflow: hidden; height: 100dvh; }
+  body.deckmode #qpos { margin-left: auto; }
+  body:not(.deckmode) #cardsbtn { display: inline-block; }
+  #deck { position: fixed; left: 0; right: 0; bottom: 0; top: var(--tbh, 57px); display: flex; flex-direction: column; padding: 10px 12px calc(env(safe-area-inset-bottom) + 10px); gap: 10px; }
+  #deck[hidden] { display: none; }
+  .stack { position: relative; flex: 1; min-height: 0; }
+  .card2 { position: absolute; inset: 0; background: var(--surface-1); border: 1px solid var(--line); border-radius: 18px; overflow: hidden;
+    display: flex; flex-direction: column; box-shadow: 0 12px 30px rgba(0,0,0,.35); touch-action: none; user-select: none; -webkit-user-select: none; will-change: transform; }
+  .card2.behind { transform: scale(.94) translateY(14px); opacity: .6; pointer-events: none; }
+  .card2.fly { transition: transform .28s ease-out, opacity .28s; }
+  .card2.snap { transition: transform .2s cubic-bezier(.2,.8,.3,1.2); }
+  .cmedia { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 10px;
+    background: repeating-conic-gradient(#232322 0 25%, #1c1c1b 0 50%) 0 0/18px 18px; }
+  .cmedia img, .cmedia video, .cmedia canvas { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; display: block; pointer-events: none; }
+  .cinfo { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 5px; }
+  .cinfo .t { font-size: 17px; font-weight: 700; display: flex; gap: 8px; align-items: center; }
+  .cinfo .t span:first-child { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .cinfo .m { font-size: 12px; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .cinfo .sum { font-size: 14px; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .cinfo .chg { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cinfo .warn { font-size: 12px; color: var(--warn); }
+  .cinfo .det { background: var(--surface-3); border: 0; border-radius: 999px; padding: 6px 12px; font-size: 13px; flex: none; }
+  .gate { padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .gate.ok { background: rgba(47,168,79,.18); color: var(--ok); } .gate.no { background: rgba(226,85,85,.16); color: var(--bad); }
+  .stamp { position: absolute; top: 22px; padding: 6px 14px; border: 4px solid; border-radius: 10px; font-size: 26px; font-weight: 800; letter-spacing: .06em;
+    opacity: 0; pointer-events: none; z-index: 3; background: rgba(0,0,0,.25); }
+  .stamp.yes { left: 18px; color: var(--ok); border-color: var(--ok); transform: rotate(-12deg); }
+  .stamp.no { right: 18px; color: var(--warn); border-color: var(--warn); transform: rotate(12deg); }
+  .stamp.later { left: 50%; top: auto; bottom: 40%; transform: translateX(-50%); color: var(--text-secondary); border-color: var(--text-secondary); }
+  .copts { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px; align-content: start; touch-action: pan-y; }
+  .copt { position: relative; border: 2px solid var(--line); border-radius: 10px; overflow: hidden; background: #1c1c1b; }
+  .copt img, .copt video, .copt canvas { width: 100%; display: block; pointer-events: none; }
+  .copt .lab { font-size: 12px; padding: 5px 7px; display: flex; justify-content: space-between; gap: 4px; }
+  .copt .rk { position: absolute; top: 6px; right: 6px; background: var(--ok); color: #fff; font-weight: 800; font-size: 12px; border-radius: 999px; padding: 2px 8px; }
+  .copt.r2 { border-color: var(--accent); } .copt.r2 .rk { background: var(--accent); } .copt.r1 { border-color: var(--ok); }
+  .copt .num { font: 10px ui-monospace, monospace; color: var(--text-muted); }
+  .actions { display: flex; justify-content: space-evenly; align-items: center; flex: none; }
+  .act { width: 64px; height: 64px; border-radius: 50%; border: 2px solid var(--line); background: var(--surface-1); font-size: 13px; font-weight: 700;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: var(--text-secondary); }
+  .act i { font-style: normal; font-size: 22px; line-height: 1; }
+  .act.yes { border-color: var(--ok); color: var(--ok); width: 76px; height: 76px; }
+  .act.no { border-color: var(--warn); color: var(--warn); width: 76px; height: 76px; }
+  .act.small { width: 52px; height: 52px; font-size: 11px; }
+  .act:active { transform: scale(.92); }
+  .notechip { font-size: 12px; color: var(--accent); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #sheet { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.5); display: flex; align-items: flex-end; }
+  #sheet[hidden] { display: none; }
+  #sheet .panel { width: 100%; background: var(--surface-1); border-radius: 18px 18px 0 0; padding: 16px 14px calc(env(safe-area-inset-bottom) + 14px); display: flex; flex-direction: column; gap: 10px; }
+  #sheet h3 { margin: 0; font-size: 16px; }
+  #sheet textarea { width: 100%; min-height: 110px; font-size: 16px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; color: inherit; font-family: inherit; }
+  #sheet .row2 { display: flex; gap: 8px; }
+  #sheet .row2 .btn { flex: 1; min-height: 50px; justify-content: center; align-items: center; }
+  #sheet .link { background: none; border: 0; color: var(--bad); font-size: 14px; padding: 8px; }
+  #sheet .hint { font-size: 12px; color: var(--text-muted); }
+  #undo { position: fixed; left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom) + 96px); z-index: 55; background: var(--surface-3); border: 1px solid var(--line);
+    border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+  #undo[hidden] { display: none; }
+  #undo span { flex: 1; }
+  #undo button { background: none; border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; font-weight: 700; color: var(--text-primary); }
+  #undo .bar2 { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--accent); border-radius: 0 0 12px 12px; animation: drain 4s linear forwards; }
+  @keyframes drain { from { width: 100%; } to { width: 0; } }
+  .cmedia { position: relative; }
+  .frames { position: absolute; top: 8px; left: 10px; right: 10px; display: flex; gap: 4px; z-index: 2; }
+  .frames i { flex: 1; height: 3px; border-radius: 2px; background: rgba(255,255,255,.3); }
+  .frames i.on { background: #fff; }
+  .flabel { position: absolute; left: 10px; bottom: 8px; z-index: 2; background: rgba(0,0,0,.6); color: #fff; font-size: 11px; padding: 3px 8px; border-radius: 999px; }
+  .cfit { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .cfit > div { transform-origin: center center; flex: none; }
+  .coach { position: absolute; inset: 0; z-index: 5; background: rgba(0,0,0,.72); border-radius: 18px; display: flex; flex-direction: column;
+    justify-content: center; gap: 16px; padding: 24px; color: #fff; font-size: 16px; }
+  .coach b { display: inline-block; width: 92px; } .coach .g { color: var(--ok); } .coach .a { color: var(--warn); }
+  .coach button { align-self: center; margin-top: 10px; background: #fff; color: #111; border: 0; border-radius: 999px; padding: 10px 26px; font-weight: 700; font-size: 15px; }
+  .closing { display: flex; gap: 8px; overflow-x: auto; }
+  .closing div { width: 110px; flex: none; font-size: 11px; color: var(--text-secondary); }
+  .closing img, .closing video { width: 100%; height: 62px; object-fit: cover; border-radius: 6px; opacity: .6; display: block; margin-bottom: 3px; }
+  .tapmore { font-size: 12px; color: var(--accent); }
+  .card2.expanded .cmedia { flex: 0 0 30%; }
+  .card2.expanded .cinfo { flex: 1; min-height: 0; overflow-y: auto; touch-action: pan-y; }
+  .card2.expanded .sum { -webkit-line-clamp: unset; }
+  .more h4 { margin: 12px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+  .more ol, .more ul { margin: 0; padding-left: 18px; font-size: 13px; }
+  .more li { margin-bottom: 6px; }
+  .more .why { color: var(--text-secondary); font-size: 12px; }
+  .more q { display: block; color: var(--text-muted); font-size: 12px; font-style: italic; }
+  .srow { display: grid; grid-template-columns: 1fr 52px 64px 64px; font-size: 13px; padding: 3px 0; font-variant-numeric: tabular-nums; }
+  .srow .bar3 { color: var(--text-muted); font-size: 11px; text-align: right; }
+  .deckidle { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 10px; }
+}
 </style>
 </head>
 <body>
+<div id="topbar"><button id="qbtn" aria-label="Open queue">☰ <span id="qcount"></span></button><b>GoodEye</b><span id="qpos"></span><button id="cardsbtn">Cards</button></div>
+<div id="deck" hidden></div>
+<div id="sheet" hidden></div>
+<div id="undo" hidden></div>
+<div id="scrim"></div>
 <div class="app">
-  <aside class="queue">
+  <aside class="queue" id="queue">
     <header>
-      <h1>GoodEye</h1>
+      <div class="qhead"><h1>GoodEye</h1><button class="phonebtn" id="phonebtn" title="Open this board on your phone">Phone</button></div>
       <div class="seg" id="filters"></div>
     </header>
     <div class="list" id="list"></div>
@@ -212,7 +388,7 @@ table.delta td { white-space: nowrap; text-align: right; padding: 4px; border-bo
 <script>
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const STATUS = { pending: "Needs review", changes: "Changes requested", approved: "Approved", rejected: "Rejected", picked: "Picked", not_chosen: "Not chosen" };
+const STATUS = { pending: "Needs review", changes: "Changes requested", approved: "Approved", rejected: "Rejected", picked: "Picked", not_chosen: "Not chosen", reopened: "Reopened" };
 const OPEN = ["pending", "changes"], FILLED = ["approved", "picked"];
 const sibsOf = it => it && it.slot ? items.filter(x => x.slot && x.slot.key === it.slot.key) : [];
 const toCloseFor = it => sibsOf(it).filter(s => s.id !== it.id && [...OPEN, ...FILLED].includes(s.status));
@@ -245,6 +421,10 @@ function renderQueue() {
   $("#filters").innerHTML = FILTERS.map(([k, l]) => `<button class="${filter === k ? "on" : ""}" data-f="${k}">${l}<span class="n">${counts[k] || 0}</span></button>`).join("");
   const shown = items.filter(i => inFilter(i, filter));
   document.title = counts.pending ? `(${counts.pending}) GoodEye` : "GoodEye";
+  $("#qcount").textContent = counts.pending || "";
+  if (typeof renderDeck === "function" && isPhone() && deckMode) setTimeout(renderDeck);
+  const pos = shown.findIndex(i => i.id === sel.id);
+  $("#qpos").textContent = pos >= 0 ? `${pos + 1} of ${shown.length}` : "";
   const row = (i, inslot) => {
     const v = i.versions[i.versions.length - 1];
     return `<div class="row ${inslot ? "inslot" : ""} ${sel.id === i.id ? "on" : ""}" data-id="${esc(i.id)}"><div class="thumb">${thumbOf(i)}</div><div style="min-width:0">
@@ -269,20 +449,22 @@ $("#filters").onclick = e => {
   if (filter === "pending" && (!cur || cur.status !== "pending")) { const p = items.find(i => i.status === "pending"); return p ? select(p.id) : showIdle(); }
   renderQueue();
 };
-$("#list").onclick = e => { const r = e.target.closest(".row"); if (r) select(r.dataset.id); };
+$("#list").onclick = e => { const r = e.target.closest(".row"); if (!r) return; if (isPhone()) { deckMode = false; renderDeck(); } select(r.dataset.id); };
 
 function select(id, version) {
   const it = item(id); if (!it) return;
   const keepView = sel.id === id;
   sel = { id, version: version || it.versions[it.versions.length - 1].version, view: keepView ? sel.view : "asset", compare: keepView && sel.compare };
   history.replaceState(null, "", "#" + encodeURIComponent(id));
+  document.body.classList.remove("qopen");
+  if (isPhone()) window.scrollTo(0, 0);
   renderQueue(); renderMain(); renderSide();
 }
 
 /* ---------- main ---------- */
 function renderMain() {
   const it = item(sel.id);
-  if (!it) { if (group) { group.destroy(); group = null; } $("#main").innerHTML = idleHtml(); wireIdle(); return; }
+  if (!it) { if (group) { group.destroy(); group = null; } $("#main").innerHTML = idleHtml(); wireIdle(); afterRender(); return; }
   const v = ver(it, sel.version), idx = it.versions.indexOf(v), prev = it.versions[idx - 1];
   const latest = v === it.versions[it.versions.length - 1];
   const draft = $("#fb") ? $("#fb").value : "";
@@ -291,7 +473,7 @@ function renderMain() {
     <div class="head"><h2>${esc(it.title)}</h2><div class="sub">${esc(it.project ? it.project + " · " : "")}${esc(it.id)} · ${esc(v.kind)} · ${(v.size_bytes / 1048576).toFixed(1)} MB · submitted ${new Date(v.submitted_at).toLocaleString()}</div></div>
     <div class="bar"><span class="lbl">Version</span>${it.versions.map(x => `<span class="chip ${x === v ? "on" : ""}" data-v="${esc(x.version)}"><span class="pill st-${x.status}"></span>${esc(x.version)}</span>`).join("")}
       <span class="gap"></span>${prev ? `<label class="toggle"><input type="checkbox" id="cmp" ${sel.compare ? "checked" : ""}> Side by side with ${esc(prev.version)}</label>` : ""}</div>
-    ${slotHtml(it)}
+    ${reopenHtml(it)}${slotHtml(it)}
     <div class="bar"><span class="lbl">View</span>${["asset", ...(v.contexts || []), ...(sibsOf(it).length > 1 ? ["slot"] : [])].map(c => `<span class="chip ${sel.view === c ? "on" : ""}" data-view="${esc(c)}">${c === "asset" ? "Asset" : c === "slot" ? `Compare all ${sibsOf(it).length} candidates` : "In context: " + esc(CTX[c] || c)}</span>`).join("")}</div>
     <div class="stage">${sel.view === "slot" ? slotGrid(it) : sel.compare && prev ? pane(prev, prev.version + " (previous)") + pane(v, v.version + " (this)") : pane(v, "")}</div>
     <div class="pbar" id="pbar" hidden></div>
@@ -299,7 +481,7 @@ function renderMain() {
       <textarea id="fb" placeholder="${latest ? "Feedback for the agent. Click here and talk." : "This is an older version. Decisions go on the latest version."}" ${latest ? "" : "disabled"}>${esc(draft)}</textarea>
       <div class="btns">
         <button class="btn approve" data-d="approved" ${latest ? "" : "disabled"}><span><span class="lab">Approve</span><span class="sub">Done. No second review.</span></span><kbd>⌥A</kbd></button>
-        <button class="btn changes" data-d="changes" ${latest ? "" : "disabled"}><span>Request changes<span class="sub">Comes back to your queue.</span></span><kbd>⌥C</kbd></button>
+        <button class="btn changes" data-d="changes" ${latest ? "" : "disabled"}><span><span class="full">Request changes</span><span class="short">Changes</span><span class="sub">Comes back to your queue.</span></span><kbd>⌥C</kbd></button>
         <button class="btn reject" data-d="rejected" ${latest ? "" : "disabled"}>Reject <kbd>⌥R</kbd></button>
       </div>
       <div class="note">Approve with notes: the agent makes those small changes and does not send it back. Request changes: you see a new version. J / K moves through the queue.</div>
@@ -313,9 +495,23 @@ function renderMain() {
   $("#main").querySelectorAll("[data-d]").forEach(b => b.onclick = () => decide(b.dataset.d));
   const cmp = $("#cmp"); if (cmp) cmp.onchange = () => { sel.compare = cmp.checked; renderMain(); };
   wireSlot(it);
+  wireReopen(it);
   mountPlayers(it);
+  afterRender();
 }
 
+function reopenHtml(it) {
+  return ["rejected", "not_chosen"].includes(it.status) ? `<div class="filled">${STATUS[it.status]}. Changed your mind?<button data-reopen>Reopen for review</button></div>` : "";
+}
+function wireReopen(it) {
+  const b = $("#main [data-reopen]"); if (!b) return;
+  b.onclick = async () => {
+    const v = it.versions[it.versions.length - 1];
+    const res = await fetch("/api/decide", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: it.id, version: v.version, verdict: "reopened", feedback: "" }) });
+    if (!res.ok) { haptic("error"); return toast((await res.json()).error || "Save failed"); }
+    haptic("undo"); toast(`Reopened ${it.title}. The agent was told.`); await load(true); select(it.id);
+  };
+}
 function slotHtml(it) {
   const sibs = sibsOf(it);
   if (sibs.length < 2) return "";
@@ -384,7 +580,7 @@ function renderChoice(it, v, latest, draft) {
   const hasNotes = draft.trim() || Object.values(d.notes).some(n => n.trim());
   $("#main").innerHTML = `
     <div class="head"><h2>${esc(it.title)}</h2><div class="sub">${esc(it.project ? it.project + " · " : "")}${esc(it.id)} · choice between ${opts.length} options · submitted ${new Date(v.submitted_at).toLocaleString()}</div></div>
-    ${slotHtml(it)}
+    ${reopenHtml(it)}${slotHtml(it)}
     <div class="bar"><span class="lbl">Round</span>${it.versions.map(x => `<span class="chip ${x === v ? "on" : ""}" data-v="${esc(x.version)}"><span class="pill st-${x.status}"></span>${esc(x.version)}</span>`).join("")}</div>
     <div class="bar"><span class="lbl">View</span>${["options", ...(v.contexts || [])].map(c => `<span class="chip ${view === c ? "on" : ""}" data-view="${esc(c)}">${c === "options" ? "All options" : "In context: " + esc(CTX[c] || c)}</span>`).join("")}
       ${view === "options" ? `<span class="gap"></span><span class="lbl">Size</span>${[[4, "S"], [3, "M"], [2, "L"], [1, "XL"]].map(([n, l]) => `<span class="chip ${d.cols === n ? "on" : ""}" data-cols="${n}">${l}</span>`).join("")}` : ""}</div>
@@ -392,15 +588,15 @@ function renderChoice(it, v, latest, draft) {
       ${v.question ? `<div class="q">${esc(v.question)}</div>` : ""}
       ${view === "options" ? `<div class="hint">Click to rank: first click is your 1st pick, next is 2nd. Click again to unrank. Notes on any option go to the agent.</div>
         <div class="opts" style="--cols:${d.cols}">${opts.map(card).join("")}</div>`
-      : `<div class="hint">Showing ${esc(focus.label)} (${d.ranking.length ? "your 1st pick" : "the agent's pick"}).</div><div class="pane">${mockup(view, optAsset(v, focus))}</div>`}
+      : `<div class="hint">Showing ${esc(focus.label)} (${d.ranking.length ? "your 1st pick" : "the agent's pick"}).</div><div class="pane"><div class="fit"><div class="fit-in">${mockup(view, optAsset(v, focus))}</div></div></div>`}
     </div></div>
     <div class="pbar" id="pbar" hidden></div>
     <div class="decide">
       <div style="grid-column:1/-1" class="picks">Your picks: ${picks}</div>
       <textarea id="fb" placeholder="${latest ? "Overall feedback, e.g. go with 1st but use the spacing from 2nd. Click here and talk." : "This is an older round. Decisions go on the latest round."}" ${latest ? "" : "disabled"}>${esc(draft)}</textarea>
       <div class="btns">
-        <button class="btn approve" data-d="picked" ${latest && d.ranking.length ? "" : "disabled"}><span>${hasNotes ? "Go with 1st pick + notes" : "Go with 1st pick"}<span class="sub">${hasNotes ? "Agent applies notes. No second review." : "Done. No second review."}</span></span><kbd>⌥A</kbd></button>
-        <button class="btn changes" data-d="changes" ${latest ? "" : "disabled"}><span>Revise, show me again<span class="sub">${d.ranking.length ? "Builds from your picks. Back to your queue." : "None of these. New options come back."}</span></span><kbd>⌥C</kbd></button>
+        <button class="btn approve" data-d="picked" ${latest && d.ranking.length ? "" : "disabled"}><span><span class="full">${hasNotes ? "Go with 1st pick + notes" : "Go with 1st pick"}</span><span class="short">Go with 1st</span><span class="sub">${hasNotes ? "Agent applies notes. No second review." : "Done. No second review."}</span></span><kbd>⌥A</kbd></button>
+        <button class="btn changes" data-d="changes" ${latest ? "" : "disabled"}><span><span class="full">Revise, show me again</span><span class="short">Revise</span><span class="sub">${d.ranking.length ? "Builds from your picks. Back to your queue." : "None of these. New options come back."}</span></span><kbd>⌥C</kbd></button>
         <button class="btn reject" data-d="rejected" ${latest ? "" : "disabled"}>Reject <kbd>⌥R</kbd></button>
       </div>
     </div>`;
@@ -415,7 +611,9 @@ function renderChoice(it, v, latest, draft) {
     $("#fb").oninput = () => refreshChoiceButtons(v);
   }
   wireSlot(it);
+  wireReopen(it);
   mountPlayers(it);
+  afterRender();
 }
 function toggleRank(v, key) {
   const d = draftOf(v), i = d.ranking.indexOf(key);
@@ -425,11 +623,11 @@ function toggleRank(v, key) {
 function refreshChoiceButtons(v) {
   const d = draftOf(v), hasNotes = $("#fb").value.trim() || Object.values(d.notes).some(n => n.trim());
   const b = $("#main [data-d=picked] > span");
-  if (b) b.innerHTML = `${hasNotes ? "Go with 1st pick + notes" : "Go with 1st pick"}<span class="sub">${hasNotes ? "Agent applies notes. No second review." : "Done. No second review."}</span>`;
+  if (b) b.innerHTML = `<span class="full">${hasNotes ? "Go with 1st pick + notes" : "Go with 1st pick"}</span><span class="short">Go with 1st</span><span class="sub">${hasNotes ? "Agent applies notes. No second review." : "Done. No second review."}</span>`;
 }
 
 function pane(v, cap) {
-  const body = sel.view === "asset" ? media(v, { cls: "raw" }) : mockup(sel.view, v);
+  const body = sel.view === "asset" ? media(v, { cls: "raw" }) : `<div class="fit"><div class="fit-in">${mockup(sel.view, v)}</div></div>`;
   return `<div class="pane">${cap ? `<div class="cap">${esc(cap)}</div>` : ""}${body}</div>`;
 }
 
@@ -700,7 +898,21 @@ function deltaTable(it, v, prev, groups) {
   return `<table class="delta"><tr><th>Metric</th>${prev ? `<th>${esc(short(prev.version))}</th>` : ""}<th>${esc(short(v.version))}</th>${prev ? "<th>Change</th>" : ""}<th>Pass bar</th></tr>${rows.join("")}</table>`;
 }
 
-function renderSide() {
+function renderSide() { renderSideInner(); foldCards(); }
+const FOLD_DEFAULT = ["Your verdicts", "Decisions and why", "Scores across versions", "Option scores"];
+function foldCards() {
+  if (!isPhone()) return;
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem("goodeye.fold") || "{}"); } catch (e) {}
+  $("#side").querySelectorAll(".card").forEach(c => {
+    const h = c.querySelector("h3"); if (!h) return;
+    const key = h.textContent.replace(/ ·.*$/, "").trim();
+    const shut = key in saved ? saved[key] : FOLD_DEFAULT.some(k => key.toLowerCase().startsWith(k.toLowerCase()));
+    c.classList.toggle("shut", shut);
+    h.onclick = () => { c.classList.toggle("shut"); saved[key] = c.classList.contains("shut"); try { localStorage.setItem("goodeye.fold", JSON.stringify(saved)); } catch (e) {} };
+  });
+}
+function renderSideInner() {
   const it = item(sel.id);
   if (!it) {
     const recent = items.flatMap(i => i.versions.flatMap(v => v.decisions.map(d => ({ ...d, title: i.title })))).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 12);
@@ -781,6 +993,7 @@ async function decide(verdict, confirmed) {
   const res = await fetch("/api/decide", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   if (!res.ok) { toast((await res.json()).error || "Save failed"); return; }
   delete drafts[v.id + "@" + v.version];
+  haptic(verdict === "rejected" ? "reject" : verdict === "changes" ? "changes" : "approve");
   $("#fb").value = "";
   const saved = await res.json();
   toast(`${STATUS[verdict]}: ${it.title} ${v.version}.${(saved.closed || []).length ? ` Closed ${saved.closed.length} other candidate${saved.closed.length > 1 ? "s" : ""}.` : ""} Sent to the agent.`);
@@ -836,8 +1049,368 @@ async function load(force) {
   if (it.versions.length !== oldLen) { sel.version = it.versions[it.versions.length - 1].version; renderMain(); toast(`New version: ${it.title} ${sel.version}`); }
   renderSide();
 }
+/* ---------- haptics ----------
+   Android: the Vibration API. iPhone (iOS 18+): Safari gives no vibration API, but toggling a native
+   switch control plays the system haptic tick, so we click a hidden one. One tick per pulse. */
+const HAPTIC = { tick: [8], threshold: [14], approve: [12, 60, 22], changes: [30], reject: [45, 50, 45], later: [8], undo: [8, 40, 8], error: [20, 60, 20, 60, 20] };
+let hswitch = null;
+function haptic(kind) {
+  const pat = HAPTIC[kind] || HAPTIC.tick;
+  if (navigator.vibrate) { try { navigator.vibrate(pat); return; } catch (e) {} }
+  if (!/iPhone|iPad/.test(navigator.userAgent)) return;
+  if (!hswitch) {
+    const lab = document.createElement("label");
+    lab.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none";
+    lab.innerHTML = '<input type="checkbox" switch>';
+    document.body.appendChild(lab); hswitch = lab;
+  }
+  const pulses = Math.ceil(pat.length / 2);
+  for (let i = 0; i < pulses; i++) setTimeout(() => hswitch.click(), i * 90);
+}
+
+/* ---------- phone: card deck (swipe right approve, left changes, up later) ---------- */
+let deckMode = true, skipped = [], pendingDec = null, dragging = false, deckTop = null;
+const frameIdx = {};
+function fitCard(root) {
+  root.querySelectorAll(".cfit").forEach(f => {
+    const inner = f.firstElementChild; inner.style.transform = "";
+    const s = Math.min(1, (f.clientWidth - 8) / inner.scrollWidth, (f.clientHeight - 8) / inner.scrollHeight);
+    inner.style.transform = `scale(${s})`;
+  });
+}
+const deckCards = () => {
+  const open = items.filter(i => i.status === "pending" && !(pendingDec && pendingDec.it.id === i.id));
+  return [...open.filter(i => !skipped.includes(i.id)), ...skipped.map(id => open.find(i => i.id === id)).filter(Boolean)];
+};
+const deckNotes = {};
+function renderDeck() {
+  const on = isPhone() && deckMode;
+  document.body.classList.toggle("deckmode", on);
+  $("#deck").hidden = !on;
+  if (!on || dragging) return;
+  document.body.style.setProperty("--tbh", $("#topbar").offsetHeight + "px");
+  const cards = deckCards();
+  $("#qpos").textContent = cards.length ? `${cards.length} left` : "";
+  const top = cards[0];
+  if (top && deckTop === top.id + "@" + top.versions[top.versions.length - 1].version && $("#deck .card2")) return;
+  deckTop = top ? top.id + "@" + top.versions[top.versions.length - 1].version : null;
+  if (!top) {
+    $("#deck").innerHTML = `<div class="deckidle">${idleHtml().replace('class="idle"', 'class="idle" style="padding:0"')}</div>`;
+    $("#deck").querySelectorAll(".row[data-id]").forEach(r => r.onclick = () => openDetail(r.dataset.id));
+    return;
+  }
+  const note = deckNotes[top.id] || "";
+  $("#deck").innerHTML = `<div class="stack">${cards[1] ? cardHtml(cards[1], true) : ""}${cardHtml(top, false)}</div>
+    ${note ? `<div class="notechip">Note: ${esc(note)}</div>` : ""}
+    <div class="actions">
+      <button class="act no" data-act="changes"><i>✎</i>Changes</button>
+      <button class="act small" data-act="notes"><i>🎙</i>Notes</button>
+      <button class="act small" data-act="later"><i>↑</i>Later</button>
+      <button class="act yes" data-act="approve"><i>✓</i>${top.versions[top.versions.length - 1].kind === "choice" ? "Go" : "Approve"}</button>
+    </div>`;
+  const el = $("#deck .card2:not(.behind)");
+  wireCard(el, top);
+  $("#deck").querySelectorAll("[data-act]").forEach(b => b.onclick = () => act(b.dataset.act, top, el));
+  el.querySelector(".det").onclick = e => { e.stopPropagation(); openDetail(top.id); };
+  startDeckGifs(el);
+  fitCard(el);
+  el.querySelectorAll("img").forEach(i => i.addEventListener("load", () => fitCard(el), { once: true }));
+  let seen = false; try { seen = localStorage.getItem("goodeye.coach") === "1"; } catch (e) {}
+  if (!seen) {
+    el.insertAdjacentHTML("beforeend", `<div class="coach"><div><b class="g">Swipe →</b> Approve</div><div><b class="a">← Swipe</b> Request changes (you say what)</div>
+      <div><b>Swipe ↑</b> Later</div><div><b>Tap image</b> See it in context</div><div style="font-size:13px;opacity:.8">Every verdict can be undone for a few seconds.</div><button>Got it</button></div>`);
+    el.querySelector(".coach button").onclick = e => { e.stopPropagation(); try { localStorage.setItem("goodeye.coach", "1"); } catch (x) {} el.querySelector(".coach").remove(); haptic("tick"); };
+  }
+}
+const expanded = {};
+function cardFrames(it) {
+  const v = it.versions[it.versions.length - 1];
+  return ["asset", ...(it.versions.length > 1 && v.kind !== "choice" ? ["prev"] : []), ...(v.contexts || [])];
+}
+let infoTapStart = null;
+document.addEventListener("pointerup", e => {                     // tap on expanded info collapses it (scrolling does not)
+  if (!infoTapStart) return;
+  const moved = Math.hypot(e.clientX - infoTapStart.x, e.clientY - infoTapStart.y);
+  infoTapStart = null;
+  const top = deckCards()[0];
+  if (moved < 8 && top && !e.target.closest("button, a")) toggleInfo(top);
+});
+function toggleInfo(it) { expanded[it.id] = !expanded[it.id]; haptic("tick"); deckTop = null; renderDeck(); }
+function pageFrame(it, dir) {
+  const n = cardFrames(it).length;
+  if (n < 2) return;
+  const i = (frameIdx[it.id] || 0) + dir;
+  if (i < 0 || i >= n) { haptic("error"); return; }
+  frameIdx[it.id] = i; haptic("tick"); deckTop = null; renderDeck();
+}
+function cardHtml(it, behind) {
+  const v = it.versions[it.versions.length - 1], r = v.reasoning || {}, j = v.judge;
+  const prev = it.versions[it.versions.length - 2];
+  const lead = Object.entries(v.scores || {})[0];
+  const delta = lead && prev?.scores?.[lead[0]] ? lead[1].value - prev.scores[lead[0]].value : null;
+  const closing = toCloseFor(it).length;
+  const frames = cardFrames(it), fi = Math.min(frameIdx[it.id] || 0, frames.length - 1), f = frames[fi];
+  const inner = f === "asset" ? deckMedia(v) : f === "prev" ? deckMedia(prev) : `<div class="cfit"><div>${mockup(f, v)}</div></div>`;
+  const flabel = f === "asset" ? (frames.length > 1 ? `${esc(v.version)} · tap right for ${frames[1] === "prev" ? "the previous version" : "mockups"}` : "")
+    : f === "prev" ? `Previous: ${esc(prev.version)} · compare` : "In context: " + esc(CTX[f] || f);
+  const body = v.kind === "choice" ? choiceGrid(v) : `<div class="cmedia" data-media>${frames.length > 1 ? `<div class="frames">${frames.map((_, i) => `<i class="${i === fi ? "on" : ""}"></i>`).join("")}</div>
+    <div class="flabel">${flabel}</div>` : ""}${inner}</div>`;
+  const exp = expanded[it.id];
+  const scoreRows = Object.entries(v.scores || {}).map(([k, x]) => { const pv = prev?.scores?.[k]?.value, pct = (x.max || 0) <= 1 && x.value <= 1;
+    const f = n => pct ? Math.round(n * 100) + "%" : (+n).toFixed(2);
+    return `<div class="srow"><span>${esc(k)}</span><b class="${x.bar != null && x.value < x.bar ? "down" : ""}">${f(x.value)}</b>${pv != null ? `<span class="${x.value >= pv ? "up" : "down"}">${x.value >= pv ? "▲" : "▼"}${pct ? Math.round(Math.abs(x.value - pv) * 100) + " pts" : Math.abs(x.value - pv).toFixed(2)}</span>` : "<span></span>"}<span class="bar3">${x.bar != null ? "bar " + f(x.bar) : ""}</span></div>`; }).join("");
+  const more = exp ? `<div class="more">
+      ${(r.changes || []).length ? `<h4>What changed</h4><ol>${r.changes.map(c => `<li>${esc(c.change)}<div class="why">${esc(c.why)}</div>${c.feedback ? `<q>${esc(c.feedback)}</q>` : ""}</li>`).join("")}</ol>` : ""}
+      ${(r.decisions || []).length ? `<h4>Decisions and why</h4><ol>${r.decisions.map(d => `<li>${esc(d.choice)}<div class="why">${esc(d.why)}</div></li>`).join("")}</ol>` : ""}
+      ${(r.open_questions || []).length ? `<h4>Questions for you</h4><ol>${r.open_questions.map(x => `<li>${esc(x)}</li>`).join("")}</ol>` : ""}
+      ${scoreRows ? `<h4>Scores${prev ? ` vs ${esc(prev.version)}` : ""}</h4>${scoreRows}` : ""}
+      ${j && (j.notes || []).length ? `<h4>${esc(j.name || "Judge")} notes</h4><ul>${j.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
+    </div>` : `<div class="tapmore">Tap for reasoning and scores ▾</div>`;
+  return `<div class="card2 ${behind ? "behind" : ""} ${exp ? "expanded" : ""}">
+    <div class="stamp yes">APPROVE</div><div class="stamp no">CHANGES</div><div class="stamp later">LATER</div>
+    ${body}
+    <div class="cinfo">
+      <div class="t"><span>${esc(it.title)}</span><button class="det">Details</button></div>
+      <div class="m"><span>${esc(v.kind === "choice" ? `Choice · ${v.options.length}` : v.version)}${it.versions.length > 1 ? ` · ${it.versions.length} versions` : ""}</span>
+        ${j ? `<span class="gate ${j.pass ? "ok" : j.pass === false ? "no" : ""}">${esc(j.name || "Judge")} ${j.pass ? "pass" : j.pass === false ? "below bar" : ""}</span>` : ""}
+        ${lead ? `<span>${esc(lead[0])} ${(+lead[1].value).toFixed(2)}${delta != null ? ` ${delta >= 0 ? "▲" : "▼"}${Math.abs(delta).toFixed(2)}` : ""}</span>` : ""}
+        ${it.project ? `<span>${esc(it.project)}</span>` : ""}</div>
+      ${v.kind === "choice" && v.question ? `<div class="sum"><b>${esc(v.question)}</b></div>` : `<div class="sum">${esc(r.summary)}</div>`}
+      ${(r.changes || [])[0] ? `<div class="chg">Changed: ${esc(r.changes[0].change)}${r.changes.length > 1 ? ` +${r.changes.length - 1} more` : ""}</div>` : ""}
+      ${closing ? `<div class="warn">Approving closes ${closing} other candidate${closing > 1 ? "s" : ""} in ${esc(it.slot.label)}.</div>` : ""}
+      ${behind ? "" : more}
+    </div></div>`;
+}
+function deckMedia(v) {
+  const u = fileUrl(v);
+  if (v.kind === "video") return `<video src="${u}" autoplay muted loop playsinline preload="auto"></video>`;
+  if (v.kind === "gif") return `<canvas class="dgif" data-src="${u}" ${v.media?.width ? `width="${v.media.width}" height="${v.media.height}"` : ""}></canvas>`;
+  return `<img src="${u}" alt="">`;
+}
+function choiceGrid(v) {
+  const d = draftOf(v);
+  return `<div class="copts">${v.options.map((o, i) => { const r = d.ranking.indexOf(o.key); const a = optAsset(v, o);
+    return `<div class="copt ${r === 0 ? "r1" : r === 1 ? "r2" : ""}" data-opt="${esc(o.key)}">${deckMedia(a)}${r >= 0 ? `<span class="rk">${["1st", "2nd", "3rd"][r] || r + 1 + "th"}</span>` : ""}
+      <div class="lab"><span>${esc(o.label)}${v.recommended === o.key ? " ★" : ""}</span><span class="num">${i + 1}</span></div></div>`; }).join("")}</div>`;
+}
+function toggleRankDeck(v, key) {
+  haptic("tick");
+  const d = draftOf(v), i = d.ranking.indexOf(key);
+  if (i >= 0) d.ranking.splice(i, 1); else d.ranking.push(key);
+  const grid = $("#deck .card2:not(.behind) .copts");
+  if (grid) { const y = grid.scrollTop; grid.outerHTML = choiceGrid(v); const g = $("#deck .card2:not(.behind) .copts"); g.scrollTop = y;
+    startDeckGifs(g); }   // taps are handled by the card's pointer logic
+}
+const deckGifs = [];
+function startDeckGifs(root) {
+  root.querySelectorAll("canvas.dgif").forEach(c => {
+    c.dataset.src && (() => { const p = new GifPlayer(c); p.loop = true; p.ready.then(() => p.play()); deckGifs.push(p); })();
+  });
+  if (!deckGifs.ticking) {
+    deckGifs.ticking = true; let last = performance.now();
+    const tick = now => { const dt = Math.min(.25, (now - last) / 1000); last = now;
+      for (let i = deckGifs.length - 1; i >= 0; i--) { if (!deckGifs[i].el.isConnected) deckGifs.splice(i, 1); else deckGifs[i].tick(dt); }
+      requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  }
+}
+function wireCard(el, it) {
+  let sx = 0, sy = 0, dx = 0, dy = 0, pid = null;
+  const stamps = { yes: el.querySelector(".stamp.yes"), no: el.querySelector(".stamp.no"), later: el.querySelector(".stamp.later") };
+  let zone = null;
+  const paint = () => {
+    const w = innerWidth, z = dx > w * 0.28 ? "yes" : dx < -w * 0.28 ? "no" : (dy < -140 && Math.abs(dx) < 80) ? "later" : null;
+    if (z !== zone) { if (z) haptic("threshold"); zone = z; }      // a tick when the swipe crosses the line that commits it
+    el.style.transform = `translate(${dx}px, ${dy}px) rotate(${dx * 0.06}deg)`;
+    stamps.yes.style.opacity = Math.max(0, Math.min(1, dx / 110));
+    stamps.no.style.opacity = Math.max(0, Math.min(1, -dx / 110));
+    stamps.later.style.opacity = Math.abs(dx) < 60 ? Math.max(0, Math.min(1, -dy / 120)) : 0;
+  };
+  el.addEventListener("pointerdown", e => {
+    if (e.target.closest("button, .coach") || e.target.closest(".card2.expanded .cinfo")) {
+      if (e.target.closest(".card2.expanded .cinfo") && !e.target.closest("button")) infoTapStart = { x: e.clientX, y: e.clientY };
+      return;
+    }
+    pid = e.pointerId; sx = e.clientX; sy = e.clientY; dx = dy = 0; dragging = true;
+    el.classList.remove("snap"); el.setPointerCapture(pid);
+  });
+  el.addEventListener("pointermove", e => { if (e.pointerId !== pid) return; dx = e.clientX - sx; dy = Math.min(0, e.clientY - sy) + Math.max(0, e.clientY - sy) * 0.2; paint(); });
+  const end = e => {
+    if (e.pointerId !== pid) return;
+    pid = null; dragging = false;
+    const w = innerWidth;
+    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) {                     // a tap, not a swipe
+      const hit = [...el.querySelectorAll("[data-opt]")].find(o => { const b = o.getBoundingClientRect(); return e.clientX >= b.left && e.clientX <= b.right && e.clientY >= b.top && e.clientY <= b.bottom; });
+      if (hit) { toggleRankDeck(it.versions[it.versions.length - 1], hit.dataset.opt); return; }
+      const m = el.querySelector("[data-media]"), r = m && m.getBoundingClientRect();   // pointer capture retargets to the card
+      if (r && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) pageFrame(it, e.clientX - r.left < r.width * 0.35 ? -1 : 1);
+      else if (el.querySelector(".cinfo").getBoundingClientRect().top <= e.clientY) toggleInfo(it);
+      return;
+    }
+    if (dx > w * 0.28) act("approve", it, el, dx, dy);
+    else if (dx < -w * 0.28) act("changes", it, el, dx, dy);
+    else if (dy < -140 && Math.abs(dx) < 80) act("later", it, el, dx, dy);
+    else { el.classList.add("snap"); dx = dy = 0; paint(); }
+  };
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", end);
+}
+function flyOut(el, dir, then) {
+  if (!el) return then();
+  el.classList.add("fly");
+  const w = innerWidth * 1.4;
+  el.style.transform = dir === "up" ? "translate(0, -120vh)" : `translate(${dir === "right" ? w : -w}px, 40px) rotate(${dir === "right" ? 24 : -24}deg)`;
+  el.style.opacity = "0";
+  setTimeout(then, 240);
+}
+function snapBack(el) { if (!el) return; el.classList.remove("fly"); el.classList.add("snap"); el.style.transform = ""; el.style.opacity = "";
+  el.querySelectorAll(".stamp").forEach(s => s.style.opacity = 0); }
+function act(kind, it, el, _dx, _dy, slotOk) {
+  if (slotOk) confirmedSlot = true;
+  const v = it.versions[it.versions.length - 1];
+  if (kind === "later") { haptic("later"); flyOut(el, "up", () => { skipped = skipped.filter(x => x !== it.id).concat(it.id); deckTop = null; renderDeck(); }); return; }
+  if (kind === "notes") return openSheet("notes", it, el);
+  if (kind === "changes") { snapBack(el); return openSheet("changes", it, el); }
+  // approve
+  if (v.kind === "choice" && !draftOf(v).ranking.length) { snapBack(el); toast("Tap an option to pick it first"); haptic("error"); return; }
+  const note = deckNotes[it.id] || "";
+  const body = { id: it.id, version: v.version, verdict: v.kind === "choice" ? "picked" : "approved", feedback: note };
+  if (v.kind === "choice") { const d = draftOf(v); body.ranking = d.ranking.map(k => ({ key: k, note: d.notes[k] || "" })); body.option_notes = []; }
+  const closing = toCloseFor(it);
+  const below = v.judge && v.judge.pass === false;
+  const label = `${note ? "Approved with notes" : v.kind === "choice" ? "Picked" : "Approved"}${closing.length ? ` · closed ${closing.length}` : ""}${below ? " · judge said below bar" : ""}`;
+  if (closing.length && !confirmedSlot) { snapBack(el); return confirmSlot(it, closing, () => act("approve", it, el, 0, 0, true)); }
+  flyOut(el, "right", () => queueDecision(it, body, label, below || closing.length ? 8000 : 4000));   // longer undo when it closes others or the judge objected
+}
+let confirmedSlot = false;
+function confirmSlot(it, closing, go) {
+  haptic("threshold");
+  $("#sheet").innerHTML = `<div class="panel"><h3>Approve for ${esc(it.slot.label)}?</h3>
+    <div class="hint">One asset fills this slot. Approving <b>${esc(it.title)}</b> closes ${closing.length === 1 ? "this one" : `these ${closing.length}`} as not chosen, and the agent stops work on ${closing.length === 1 ? "it" : "them"}:</div>
+    <div class="closing">${closing.map(c => `<div>${thumbOf(c)}${esc(c.title)}<br>${STATUS[c.status]}</div>`).join("")}</div>
+    <div class="row2"><button class="btn" data-s="cancel" style="background:var(--surface-3)">Cancel</button><button class="btn approve" data-s="ok">Approve, close ${closing.length}</button></div></div>`;
+  $("#sheet").hidden = false;
+  $("#sheet").onclick = e => { if (e.target.id === "sheet") { $("#sheet").hidden = true; } };
+  $("#sheet").querySelector("[data-s=cancel]").onclick = () => { $("#sheet").hidden = true; };
+  $("#sheet").querySelector("[data-s=ok]").onclick = () => { $("#sheet").hidden = true; confirmedSlot = true; try { go(); } finally { confirmedSlot = false; } };
+}
+function openSheet(kind, it, el) {
+  const v = it.versions[it.versions.length - 1];
+  const title = kind === "notes" ? "Notes for the agent" : "What should change?";
+  $("#sheet").innerHTML = `<div class="panel">
+    <h3>${title}</h3><div class="hint">${kind === "notes" ? "Swipe right or tap Approve after this: the agent applies these notes without sending it back." : "Tap the box and talk. The agent makes a new version and it comes back to you."}</div>
+    <textarea id="sheetfb" placeholder="${kind === "notes" ? "e.g. nudge the logo left" : "e.g. the headline is too small on mobile"}">${esc(deckNotes[it.id] || "")}</textarea>
+    <div class="row2">${kind === "notes"
+      ? `<button class="btn" data-s="cancel" style="background:var(--surface-3)">Done</button><button class="btn approve" data-s="approve">Approve with notes</button>`
+      : `<button class="btn" data-s="cancel" style="background:var(--surface-3)">Cancel</button><button class="btn changes" data-s="send">Send changes</button>`}</div>
+    ${kind === "changes" ? `<button class="link" data-s="reject">Reject instead (stop work on it)</button>` : ""}</div>`;
+  $("#sheet").hidden = false;
+  const ta = $("#sheetfb"); setTimeout(() => ta.focus(), 50);
+  const close = () => { deckNotes[it.id] = kind === "notes" ? ta.value : deckNotes[it.id]; $("#sheet").hidden = true; deckTop = null; renderDeck(); };
+  $("#sheet").onclick = e => { if (e.target.id === "sheet") close(); };
+  $("#sheet").querySelectorAll("[data-s]").forEach(b => b.onclick = () => {
+    const s = b.dataset.s, text = ta.value.trim();
+    if (s === "cancel") return close();
+    if (s === "approve") { deckNotes[it.id] = ta.value; $("#sheet").hidden = true; return act("approve", it, $("#deck .card2:not(.behind)")); }
+    if (s === "send" && !text) { ta.focus(); haptic("error"); toast("Say what to change"); return; }
+    $("#sheet").hidden = true;
+    const verdict = s === "reject" ? "rejected" : "changes";
+    const body = { id: it.id, version: v.version, verdict, feedback: ta.value };
+    if (v.kind === "choice") { const d = draftOf(v); body.ranking = d.ranking.map(k => ({ key: k, note: d.notes[k] || "" })); body.option_notes = []; }
+    flyOut($("#deck .card2:not(.behind)"), "left", () => queueDecision(it, body, verdict === "rejected" ? "Rejected" : "Changes requested"));
+  });
+}
+function queueDecision(it, body, label, ms = 4000) {
+  if (pendingDec) commitDecision();          // one undo at a time: send the previous one now
+  const timer = setTimeout(commitDecision, ms);
+  pendingDec = { it, body, timer };
+  deckTop = null; renderDeck();
+  haptic(body.verdict === "rejected" ? "reject" : body.verdict === "changes" ? "changes" : "approve");
+  $("#undo").innerHTML = `<span>${esc(label)}: ${esc(it.title)}</span><button id="undobtn">Undo</button><div class="bar2" style="animation-duration:${ms}ms"></div>`;
+  $("#undo").hidden = false;
+  $("#undobtn").onclick = () => { haptic("undo"); clearTimeout(pendingDec.timer); pendingDec = null; $("#undo").hidden = true; deckTop = null; renderDeck(); };
+}
+async function commitDecision() {
+  const p = pendingDec; if (!p) return;
+  pendingDec = null; clearTimeout(p.timer); $("#undo").hidden = true;
+  try {
+    const res = await fetch("/api/decide", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p.body), keepalive: true });
+    if (!res.ok) throw new Error((await res.json()).error || "save failed");
+    delete deckNotes[p.it.id]; delete drafts[p.it.id + "@" + p.body.version];
+    skipped = skipped.filter(x => x !== p.it.id);
+    await load(true);
+  } catch (e) { haptic("error"); toast("Not sent: " + e.message); deckTop = null; renderDeck(); }
+}
+addEventListener("pagehide", () => commitDecision());
+document.addEventListener("visibilitychange", () => { if (document.hidden) commitDecision(); });
+function openDetail(id) { deckMode = false; renderDeck(); select(id); }
+$("#cardsbtn").onclick = () => { deckMode = true; deckTop = null; renderDeck(); window.scrollTo(0, 0); };
+
+/* ---------- phone: layout helpers, drawer, swipe, pairing ---------- */
+function isPhone() { return matchMedia("(max-width: 760px)").matches; }
+function fitMockups() {
+  document.querySelectorAll(".fit").forEach(f => {
+    const inner = f.firstElementChild; if (!inner) return;
+    inner.style.transform = "";
+    const s = Math.min(1, f.clientWidth / Math.max(1, inner.scrollWidth));
+    inner.style.transform = s < 1 ? `scale(${s})` : "";
+    inner.style.margin = s < 1 ? "" : "0 auto";
+    f.style.height = s < 1 ? inner.offsetHeight * s + "px" : "";
+  });
+}
+const fitObserver = new ResizeObserver(() => fitMockups());
+function afterRender() {
+  document.querySelectorAll(".fit-in").forEach(el => fitObserver.observe(el));
+  fitMockups();
+  const fb = $("#fb");
+  if (fb) { const sync = () => fb.classList.toggle("filled", !!fb.value.trim()); fb.addEventListener("input", sync); sync(); }
+  const dec = $(".decide");
+  document.body.style.setProperty("--dh", (dec ? dec.offsetHeight : 0) + "px");
+}
+addEventListener("resize", () => { afterRender(); deckTop = null; renderDeck(); });
+$("#qbtn").onclick = () => document.body.classList.add("qopen");
+$("#scrim").onclick = () => document.body.classList.remove("qopen");
+
+// Swipe left or right on the asset to move through the queue.
+let touch = null;
+document.addEventListener("touchstart", e => {
+  const t = e.target;
+  if (!isPhone() || deckMode || !t.closest(".stage") || t.closest("input, textarea, button, .pbar")) { touch = null; return; }
+  touch = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() };
+}, { passive: true });
+document.addEventListener("touchend", e => {
+  if (!touch) return;
+  const dx = e.changedTouches[0].clientX - touch.x, dy = e.changedTouches[0].clientY - touch.y, dt = Date.now() - touch.t;
+  touch = null;
+  if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6 || dt > 700) return;
+  const shown = items.filter(i => inFilter(i, filter)), i = shown.findIndex(x => x.id === sel.id);
+  const n = shown[i + (dx < 0 ? 1 : -1)];
+  if (n) select(n.id); else toast(dx < 0 ? "End of the queue" : "Start of the queue");
+}, { passive: true });
+
+// Desktop: show the QR code that opens this board on a phone.
+$("#phonebtn").onclick = async () => {
+  const m = document.createElement("div"); m.className = "modal";
+  let html;
+  try {
+    const p = await (await fetch("/api/pair")).json();
+    html = p.lan && p.urls.length ? `<h3 style="margin-top:0">Scan with your phone</h3>${p.urls[0].svg}<div class="url">${esc(p.urls[0].url)}</div>
+      <p style="font-size:13px;color:var(--text-secondary)">Same Wi-Fi as this computer. The link signs the phone in once. Keep it private.${p.urls.length > 1 ? `<br>${esc(p.urls[1].label)}: ${esc(p.urls[1].url)}` : ""}</p>`
+      : `<h3 style="margin-top:0">Phone mode is off</h3><p style="color:var(--text-secondary)">Run <code>goodeye phone</code> in a terminal on this computer, then click Phone again.</p>`;
+  } catch (e) { html = `<p>Could not reach the board.</p>`; }
+  m.innerHTML = `<div class="box">${html}<button class="phonebtn" style="display:inline-block;margin-top:10px;padding:8px 16px">Close</button></div>`;
+  m.onclick = e => { if (e.target === m || e.target.tagName === "BUTTON") m.remove(); };
+  document.body.appendChild(m);
+};
+
+// Poll for new work only while the page is visible. The server answers 304 when nothing changed.
+let poll = null;
+const startPoll = () => { if (!poll) poll = setInterval(() => load(false).catch(() => {}), 3000); };
+const stopPoll = () => { clearInterval(poll); poll = null; };
+document.addEventListener("visibilitychange", () => { if (document.hidden) stopPoll(); else { load(false).catch(() => {}); startPoll(); } });
+addEventListener("hashchange", () => { const id = decodeURIComponent(location.hash.slice(1)); if (id && id !== sel.id && item(id)) select(id); });
 load(true);
-setInterval(() => load(false).catch(() => {}), 3000);
+startPoll();
 </script>
 </body>
 </html>

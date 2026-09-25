@@ -82,6 +82,7 @@ The `wait` output ends with a `next:` line. Follow it.
   judge, and resubmit with the same `--id` and a `changes` list.
 - **REJECTED**: stop work on that item. Do not resubmit unless asked.
 - **NOT_CHOSEN**: another item won its slot. Stop work on it. Do not resubmit it.
+- **REOPENED**: the reviewer brought a rejected or not-chosen item back into review. Do not change it; wait for its next verdict.
 
 ## 6. Choices: when the reviewer should pick between options
 

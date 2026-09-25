@@ -104,6 +104,10 @@ class GoodEyeTest(unittest.TestCase):
         self.assertEqual(sorted(d["closed"]), ["hero-a@v1", "hero-c@v1"])
         out = self.wait_output()
         self.assertEqual(out.count("VERDICT NOT_CHOSEN"), 2)
+        self.assertEqual(self.post({"id": "hero-b", "version": "v1", "verdict": "reopened"})[0], 400)   # approved: not reopenable
+        self.assertEqual(self.post({"id": "hero-a", "version": "v1", "verdict": "reopened"})[0], 200)
+        self.assertIn("REOPENED", self.wait_output())
+        self.assertIn("pending    hero-a@v1", self.cli("status").stdout)
 
     def test_choice_pick_with_notes(self):
         self.file("o1.png", b"1")
@@ -142,6 +146,47 @@ class GoodEyeTest(unittest.TestCase):
         self.assertEqual(self.get("/files/../decisions.jsonl")[0], 404)
         self.assertEqual(self.get("/files/%2e%2e/decisions.jsonl")[0], 404)
         self.assertEqual(self.get("/api/items", host="evil.example")[0], 403)
+
+    def test_phone_mode_needs_the_token(self):
+        with open(os.path.join(self.env["GOODEYE_HOME"], "config.json"), "w") as f:
+            json.dump({"lan": True}, f)
+        self.server.terminate()
+        self.server.wait(5)
+        self.server = subprocess.Popen(CLI + ["serve", "--port", str(self.port)], env=self.env,
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(1)
+        self.cli("submit", self.png, "--id", "banner", "--reasoning", self.reason)
+        with open(os.path.join(self.env["GOODEYE_HOME"], "phone-token")) as f:
+            tok = f.read().strip()
+        lan = f"192.168.50.7:{self.port}"
+        self.assertEqual(self.get("/api/items", host=lan)[0], 403)                 # no token
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        c.request("GET", "/?t=wrong", headers={"Host": lan})
+        self.assertEqual(c.getresponse().status, 403)                               # wrong token
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        c.request("GET", f"/?t={tok}", headers={"Host": lan})
+        r = c.getresponse()
+        self.assertEqual(r.status, 303)
+        cookie = r.getheader("Set-Cookie")
+        self.assertIn("HttpOnly", cookie)
+        self.assertIn("SameSite=Strict", cookie)
+        jar = cookie.split(";")[0]
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        c.request("GET", "/api/items", headers={"Host": lan, "Cookie": jar})
+        self.assertEqual(c.getresponse().status, 200)
+        body = {"id": "banner", "version": "v1", "verdict": "approved", "feedback": ""}
+        self.assertEqual(self.post(body, {"Host": lan, "Cookie": jar, "Origin": "http://evil.example"})[0], 403)
+        self.assertEqual(self.post(body, {"Host": lan, "Cookie": jar})[0], 403)      # remote writes need Origin
+        self.assertEqual(self.post(body, {"Host": lan, "Cookie": jar, "Origin": f"http://{lan}"})[0], 200)
+
+    def test_unchanged_items_cost_a_304(self):
+        self.cli("submit", self.png, "--id", "banner", "--reasoning", self.reason)
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        c.request("GET", "/api/items", headers={"Host": f"127.0.0.1:{self.port}"})
+        r = c.getresponse(); r.read()
+        etag = r.getheader("ETag")
+        c.request("GET", "/api/items", headers={"Host": f"127.0.0.1:{self.port}", "If-None-Match": etag})
+        self.assertEqual(c.getresponse().status, 304)
 
     def test_demo_loads(self):
         self.cli("demo")

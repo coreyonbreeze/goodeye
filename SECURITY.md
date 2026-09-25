@@ -1,10 +1,11 @@
 # Security
 
-GoodEye is a local tool. The board listens on `127.0.0.1` only and never on your network.
+GoodEye is a local tool. By default the board listens on `127.0.0.1` only. Phone mode (`goodeye phone`) is opt-in and opens it to your local network behind a secret token.
 
 ## What protects the board
 
-- **Loopback only.** The server binds `127.0.0.1`. Other machines cannot reach it.
+- **Loopback by default.** The server binds `127.0.0.1`. Other machines cannot reach it.
+- **Phone mode is token-gated.** With `goodeye phone` the server binds all interfaces, and every request that is not from this machine needs a 32-character random token (`~/.goodeye/phone-token`, mode 600). The QR link sets it as an `HttpOnly`, `SameSite=Strict` cookie and redirects so the token leaves the address bar. Without it every request gets 403. Requests that name `localhost` must also come from loopback, so a device on the network cannot pose as local. `--new-token` signs every phone out; `--off` closes it again.
 - **Host check.** Requests whose `Host` header is not `localhost`, `127.0.0.1` or `[::1]` get 403. This blocks DNS-rebinding pages from reading your store.
 - **Write check.** Verdicts must be `application/json` (cross-site pages cannot send that without a preflight the server never approves) and must carry no foreign `Origin`. A website you visit cannot approve or reject your work.
 - **No framing.** `X-Frame-Options: DENY` and `frame-ancestors 'none'` stop click-jacking.
@@ -15,7 +16,8 @@ GoodEye is a local tool. The board listens on `127.0.0.1` only and never on your
 ## What it does not protect against
 
 - Other programs running as your user can read `~/.goodeye` and call the local port, like any local file or service.
-- Do not expose the port with a tunnel or a reverse proxy. There is no login.
+- Phone mode uses plain HTTP on your network. Anyone who can watch your Wi-Fi traffic could read the token and your assets. Use it on networks you trust, or over Tailscale, which encrypts the connection.
+- Do not expose the port to the internet with a tunnel or a reverse proxy.
 
 ## Reporting a problem
 
