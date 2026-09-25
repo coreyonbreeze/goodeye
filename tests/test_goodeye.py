@@ -20,12 +20,14 @@ class GoodEyeTest(unittest.TestCase):
         self.env = dict(os.environ, GOODEYE_HOME=os.path.join(self.tmp.name, "store"), GOODEYE_PORT=str(self.port))
         self.server = subprocess.Popen(CLI + ["serve", "--port", str(self.port)], env=self.env,
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        for _ in range(50):
+        for _ in range(150):
             try:
-                socket.create_connection(("127.0.0.1", self.port), 0.1).close()
+                socket.create_connection(("127.0.0.1", self.port), 0.2).close()
                 break
             except OSError:
                 time.sleep(0.1)
+        else:
+            self.fail("the board server did not start")
         self.png = self.file("a.png", b"\x89PNG\r\n\x1a\n" + b"0" * 64)
         self.reason = self.json("r.json", {"summary": "s", "decisions": [{"choice": "c", "why": "w"}]})
         self.reason2 = self.json("r2.json", {"summary": "s", "decisions": [{"choice": "c", "why": "w"}],
