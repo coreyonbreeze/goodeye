@@ -1,0 +1,9 @@
+{
+  "question": "Which font should the logo use?",
+  "recommended": "anton",
+  "options": [
+    {"key": "anton", "label": "Anton", "file": "fonts/anton.png", "note": "Strongest at 16 px.", "scores": {"judge": 0.92}},
+    {"key": "bebas", "label": "Bebas", "file": "fonts/bebas.png", "note": "Softer, more editorial.", "scores": {"judge": 0.82}},
+    {"key": "oswald", "label": "Oswald", "file": "fonts/oswald.png", "scores": {"judge": 0.54}}
+  ]
+}

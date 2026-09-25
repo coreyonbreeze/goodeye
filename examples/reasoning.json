@@ -1,0 +1,11 @@
+{
+  "summary": "LinkedIn profile banner, second pass, using the brand greens.",
+  "decisions": [
+    {"choice": "Keep the logo in the right third", "why": "The profile photo covers the lower left on desktop and mobile."},
+    {"choice": "Dark text on cream", "why": "Contrast 9.1:1, readable at the mobile banner height."}
+  ],
+  "changes": [
+    {"change": "Switched to the green palette", "why": "Matches the logo.", "feedback": "use our greens"}
+  ],
+  "open_questions": []
+}

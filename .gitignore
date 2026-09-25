@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.DS_Store
+.goodeye/
+*.log
+.env
+.env.*

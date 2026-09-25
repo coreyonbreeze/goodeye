@@ -1,0 +1,8 @@
+{
+  "scores": {
+    "clarity": {"value": 3.2, "max": 4, "bar": 2.8, "group": "Quality (0 to 4)"},
+    "craft": {"value": 3.3, "max": 4, "bar": 2.8, "group": "Quality (0 to 4)"},
+    "ship": {"value": 0.82, "max": 1, "bar": 0.75, "group": "Ready to ship (chance of yes)"}
+  },
+  "judge": {"name": "My LLM judge", "pass": true, "notes": ["Weakest area: hook"]}
+}
