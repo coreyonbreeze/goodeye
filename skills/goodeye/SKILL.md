@@ -52,7 +52,7 @@ goodeye submit <file> --id <stable-id> --title "<human title>" --project <Projec
 - `--scores` shows judge scores and a trend chart across versions. Use the same metric names on every version:
   `{"scores": {"clarity": {"value": 2.9, "max": 4, "bar": 2.8, "group": "Quality (0 to 4)"}}, "judge": {"name": "My judge", "pass": true, "notes": ["..."]}}`.
   A flat `{"clarity": 2.9}` also works. Metrics with the same `group` share one chart. `bar` draws the pass line.
-- `--context` (comma list) picks the mockups: `linkedin-banner`, `linkedin-post`, `x-banner` (profile header),
+- `--context` (comma list) picks the mockups: `linkedin-banner` (personal profile), `linkedin-company-cover` (company page), `linkedin-post`, `x-banner` (profile header),
   `x-post`, `instagram-post`, `instagram-story`, `email`, `website-hero`, `browser-tab`, `youtube-thumbnail`,
   `phone`. Pick every place the asset will really appear. If none fits, leave it off and say so in
   `open_questions`. Never pick the nearest wrong one. Contact sheets get no context.

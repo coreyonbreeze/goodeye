@@ -416,7 +416,7 @@ const drafts = {};
 const draftOf = v => drafts[v.id + "@" + v.version] ||= { ranking: [], notes: {}, cols: 3 };
 const optAsset = (v, o) => ({ ...o, id: v.id, version: v.version + "#" + o.key, title: o.label, dir: v.dir, file: "options/" + o.file, project: v.project });
 const FILTERS = [["pending", "Review"], ["changes", "Changes"], ["approved", "Approved"], ["all", "All"]];
-const CTX = { "linkedin-banner": "LinkedIn banner", "linkedin-post": "LinkedIn post", "x-post": "X post", "x-banner": "X profile header", "instagram-post": "Instagram post",
+const CTX = { "linkedin-banner": "LinkedIn banner", "linkedin-company-cover": "LinkedIn company cover", "linkedin-post": "LinkedIn post", "x-post": "X post", "x-banner": "X profile header", "instagram-post": "Instagram post",
   "instagram-story": "Instagram story", "email": "Email", "website-hero": "Website hero", "browser-tab": "Browser tab",
   "youtube-thumbnail": "YouTube thumbnail", "phone": "Phone" };
 let agents = [], staleH = 12;
@@ -703,6 +703,16 @@ function mockup(ctx, v) {
         <div><div class="mk-meta" style="margin-bottom:6px">Desktop, 1584 × 396</div>${prof(620, 128, 20)}</div>
         <div><div class="mk-meta" style="margin-bottom:6px">Mobile app</div>${prof(340, 76, 14)}</div></div>
         <div class="mock-note">The photo circle covers the lower left. Keep text and faces out of that area.</div>`;
+    }
+    case "linkedin-company-cover": {
+      const page = (w, logo, pad) => `<div class="mk-card mock" style="width:${w}px"><div style="position:relative">${box(v, "aspect-ratio:1128/191")}
+        <div style="position:absolute;left:${pad}px;bottom:-${logo / 2}px;width:${logo}px;height:${logo}px;border-radius:8px;background:#c9c7c1;border:4px solid #fff"></div></div>
+        <div style="padding:${logo / 2 + 10}px ${pad}px 16px"><div class="mk-name" style="font-size:18px">${name}</div>${sk("45%")}${sk("30%")}
+        <div style="display:flex;gap:8px;margin-top:10px"><div style="width:90px;height:30px;border-radius:999px;background:#0a66c2"></div><div style="width:90px;height:30px;border-radius:999px;border:1px solid #0a66c2"></div></div></div></div>`;
+      return `<div class="mk-page mock" style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;justify-content:center">
+        <div><div class="mk-meta" style="margin-bottom:6px">Company page, 1128 × 191</div>${page(620, 96, 20)}</div>
+        <div><div class="mk-meta" style="margin-bottom:6px">Mobile app</div>${page(340, 64, 14)}</div></div>
+        <div class="mock-note">The square logo covers the lower left. Keep text away from that corner and the edges.</div>`;
     }
     case "linkedin-post":
       return `<div class="mk-page mock"><div class="mk-card" style="width:552px">${hdr}<div style="padding:0 12px 10px">${sk("92%")}${sk("70%")}</div>

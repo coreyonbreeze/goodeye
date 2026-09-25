@@ -30,7 +30,7 @@ HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, HERE)
 PORT = int(os.environ.get("GOODEYE_PORT", "4400"))
 URL = f"http://localhost:{PORT}"
-CONTEXTS = ["linkedin-banner", "linkedin-post", "x-banner", "x-post", "instagram-post", "instagram-story", "email",
+CONTEXTS = ["linkedin-banner", "linkedin-company-cover", "linkedin-post", "x-banner", "x-post", "instagram-post", "instagram-story", "email",
             "website-hero", "browser-tab", "youtube-thumbnail", "phone"]
 OPEN = ("pending", "changes")          # still competing in a slot
 FILLED = ("approved", "picked")       # holds a slot
@@ -168,6 +168,7 @@ def image_size(path):
 # Publisher guidance as of 2026. Warnings only: the reviewer decides.
 SPECS = {
     "linkedin-banner": {"size": (1584, 396), "max_mb": 8},
+    "linkedin-company-cover": {"size": (1128, 191)},
     "x-banner": {"size": (1500, 500), "max_mb": 2},
     "youtube-thumbnail": {"size": (1280, 720), "max_mb": 2},
     "instagram-story": {"ratio": (9 / 16, 9 / 16), "min_w": 1080},
