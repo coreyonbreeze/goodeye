@@ -16,6 +16,9 @@ Agents can produce dozens of marketing assets an hour. The slow part is you: fin
 - **The agent must explain itself.** Each submission carries a summary, its decisions with reasons, and from the second version on, what changed in answer to your feedback, quoting your words.
 - **Verdicts the agent can act on.** "Approve with notes" means *apply these small fixes, no second review*. "Request changes" means *show me again*. The agent is told exactly which.
 - **Pick between options.** A choice shows options side by side. Rank them (1st, 2nd), note any one ("take the orange from this one"), and send.
+- **Spec checks.** Each file is checked against its placements (LinkedIn banner 1584×396, X header 1500×500, YouTube thumbnail 1280×720, story 9:16, email width and GIF size, favicon shape, hero file size). The agent sees the warnings when it submits; you see them on the card.
+- **Notes that point at a moment.** "Note at 0:03.20" on the timeline adds the time to your note. Hold **C** (or long-press on a phone) to flash the previous version. Your most-used notes come back as one-tap chips.
+- **Know the agent is listening.** The board shows whether an agent is waiting for verdicts. Changes that never came back are flagged, and the agent gets one reminder on its next `goodeye wait`.
 - **One winner per placement.** Put competing candidates in a *slot*. Approving one closes the others, after you confirm.
 
 ![A choice: three icon options ranked, with a note on the second pick](docs/choice.jpg)
@@ -63,6 +66,9 @@ agent: wakes with "APPROVED WITH NOTES ... Do NOT resubmit", applies the note, m
 | `goodeye slot KEY ID... [--label NAME]` | Put existing items in one slot |
 | `goodeye serve [--port N]` / `goodeye open` | Run the board / open it in the browser (submit starts it automatically) |
 | `goodeye demo` | Load four sample items |
+| `goodeye phone [--off] [--new-token]` | Open the board to your phone (QR code, token-protected) |
+| `goodeye notify --ntfy URL` / `--off` / `--test` | Push a phone notification when new work arrives (opt-in) |
+| `goodeye export DIR [--project P]` | Copy approved final files (pick 1 for choices) plus a `manifest.json` |
 
 Environment: `GOODEYE_HOME` (store, default `~/.goodeye`), `GOODEYE_PORT` (default `4400`).
 
@@ -129,7 +135,7 @@ On a phone the board is a card deck:
 
 ## Keyboard
 
-`J` / `K` next and previous item. `⌥A` approve, `⌥C` request changes, `⌥R` reject (these work while you type). `1` to `9` rank options in a choice. `Space` play or pause, `,` / `.` or the arrow keys step one frame.
+`J` / `K` next and previous item. Hold `C` to flash the previous version. `⌥A` approve, `⌥C` request changes, `⌥R` reject (these work while you type). `1` to `9` rank options in a choice. `Space` play or pause, `,` / `.` or the arrow keys step one frame.
 
 ## Privacy and security
 

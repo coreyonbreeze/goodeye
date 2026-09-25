@@ -56,6 +56,8 @@ goodeye submit <file> --id <stable-id> --title "<human title>" --project <Projec
   `x-post`, `instagram-post`, `instagram-story`, `email`, `website-hero`, `browser-tab`, `youtube-thumbnail`,
   `phone`. Pick every place the asset will really appear. If none fits, leave it off and say so in
   `open_questions`. Never pick the nearest wrong one. Contact sheets get no context.
+- Read the submit output. `SPEC WARNING` lines mean the file does not fit a placement you named (wrong size, shape,
+  or file weight). Fix it and resubmit before the reviewer looks, or explain in `reasoning` why it is right.
 - After a batch, tell the reviewer in one line how many items are up, with the link http://localhost:4400.
 
 ## 4. Wait for the verdict
@@ -82,6 +84,9 @@ The `wait` output ends with a `next:` line. Follow it.
   judge, and resubmit with the same `--id` and a `changes` list.
 - **REJECTED**: stop work on that item. Do not resubmit unless asked.
 - **NOT_CHOSEN**: another item won its slot. Stop work on it. Do not resubmit it.
+- **REMINDER** (from `goodeye wait`): changes the reviewer asked for have not come back. Submit those new versions,
+  then run `goodeye wait` again.
+- Notes may start with a time such as `[0:03.20]`: that is the moment in the video or GIF the note is about.
 - **REOPENED**: the reviewer brought a rejected or not-chosen item back into review. Do not change it; wait for its next verdict.
 
 ## 6. Choices: when the reviewer should pick between options

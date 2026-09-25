@@ -10,17 +10,21 @@
   goodeye open                     open the board in the browser
   goodeye demo                     load sample items so you can try the board
   goodeye phone [--off]            let your phone open the board over Wi-Fi (token-protected, prints a QR code)
+  goodeye notify --ntfy URL        push a phone notification when new work arrives (opt-in; sends title only)
+  goodeye export DIR [--project P] copy approved final files plus a manifest, for handoff or upload
 
 Store: $GOODEYE_HOME (default ~/.goodeye). Port: $GOODEYE_PORT (default 4400). Python 3.9+, standard library only.
 """
-import argparse, datetime, threading, http.server, http.cookies, webbrowser, zlib, struct, secrets, hmac, gzip, hashlib, io, json, mimetypes, os, re, shutil, socket, subprocess, sys, time, urllib.parse, uuid
+import argparse, atexit, signal, urllib.request, datetime, threading, http.server, http.cookies, webbrowser, zlib, struct, secrets, hmac, gzip, hashlib, io, json, mimetypes, os, re, shutil, socket, subprocess, sys, time, urllib.parse, uuid
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 HOME = os.path.expanduser(os.environ.get("GOODEYE_HOME", "~/.goodeye"))
 ASSETS = os.path.join(HOME, "assets")
 DECISIONS = os.path.join(HOME, "decisions.jsonl")
 DELIVERED = os.path.join(HOME, "delivered.json")
 CONFIG = os.path.join(HOME, "config.json")
+AGENTS = os.path.join(HOME, "agents")
+REMINDED = os.path.join(HOME, "reminded.json")
 TOKEN_FILE = os.path.join(HOME, "phone-token")
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, HERE)
@@ -109,6 +113,7 @@ def all_items():
                 continue
             for v in vs:
                 v["decisions"] = by_key.get(f'{asset_id}@{v["version"]}', [])
+                v["checks"] = checks_for(v)
                 last = v["decisions"][-1]["verdict"] if v["decisions"] else "pending"
                 v["status"] = "pending" if last == "reopened" else last
             latest = vs[-1]
@@ -116,6 +121,180 @@ def all_items():
                           "status": latest["status"], "updated": latest["submitted_at"], "slot": latest.get("slot"), "versions": vs})
     items.sort(key=lambda i: i["updated"], reverse=True)
     return items
+
+
+# ---------- placement spec checks ----------
+
+def image_size(path):
+    """(width, height) from the file header for PNG, GIF, JPEG, WebP and simple SVG. None if unknown."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(64 * 1024)
+    except OSError:
+        return None
+    if head[:8] == b"\x89PNG\r\n\x1a\n":
+        return struct.unpack(">II", head[16:24])
+    if head[:6] in (b"GIF87a", b"GIF89a"):
+        return struct.unpack("<HH", head[6:10])
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        tag = head[12:16]
+        if tag == b"VP8 ":
+            w, h = struct.unpack("<HH", head[26:30])
+            return w & 0x3FFF, h & 0x3FFF
+        if tag == b"VP8L":
+            b = head[21:25]
+            return 1 + (((b[1] & 0x3F) << 8) | b[0]), 1 + (((b[3] & 0xF) << 10) | (b[2] << 2) | ((b[1] & 0xC0) >> 6))
+        if tag == b"VP8X":
+            return 1 + int.from_bytes(head[24:27], "little"), 1 + int.from_bytes(head[27:30], "little")
+    if head[:2] == b"\xff\xd8":
+        i = 2
+        while i + 9 < len(head):
+            if head[i] != 0xFF:
+                i += 1
+                continue
+            marker = head[i + 1]
+            if marker in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):
+                h, w = struct.unpack(">HH", head[i + 5:i + 9])
+                return w, h
+            i += 2 + struct.unpack(">H", head[i + 2:i + 4])[0]
+    if b"<svg" in head[:4096]:
+        txt = head[:4096].decode("utf-8", "ignore")
+        vb = re.search(r'viewBox="\s*[-\d.]+[ ,]+[-\d.]+[ ,]+([\d.]+)[ ,]+([\d.]+)', txt)
+        if vb:
+            return float(vb.group(1)), float(vb.group(2))
+    return None
+
+
+# Publisher guidance as of 2026. Warnings only: the reviewer decides.
+SPECS = {
+    "linkedin-banner": {"size": (1584, 396), "max_mb": 8},
+    "x-banner": {"size": (1500, 500), "max_mb": 2},
+    "youtube-thumbnail": {"size": (1280, 720), "max_mb": 2},
+    "instagram-story": {"ratio": (9 / 16, 9 / 16), "min_w": 1080},
+    "instagram-post": {"ratio": (4 / 5, 1.91), "min_w": 1080},
+    "linkedin-post": {"ratio": (4 / 5, 1.91)},
+    "x-post": {"ratio": (9 / 16, 2.0)},
+    "email": {"max_w": 1200, "gif_mb": 1, "max_mb": 3},
+    "browser-tab": {"ratio": (1, 1), "min_w": 32},
+    "website-hero": {"max_mb_image": 2, "max_mb_video": 10},
+}
+
+
+def spec_checks(path, kind, contexts, media=None):
+    """Warnings for placements this file does not fit. Returns [{"context", "msg"}]."""
+    if not contexts or not os.path.isfile(path):
+        return []
+    dims = image_size(path) if kind in ("image", "gif") else None
+    if not dims and media and media.get("width"):
+        dims = (media["width"], media["height"])
+    mb = os.path.getsize(path) / 1048576
+    out = []
+    for c in contexts:
+        r = SPECS.get(c)
+        if not r:
+            continue
+        say = lambda msg: out.append({"context": c, "msg": msg})
+        is_svg = path.lower().endswith(".svg")
+        if dims and not is_svg:
+            w, h = dims
+            if "size" in r:
+                tw, th = r["size"]
+                if abs(w / h - tw / th) > 0.02:
+                    say(f"{w}x{h} is not the {tw}x{th} shape ({tw / th:.2f}:1); the platform will crop it")
+                elif w < tw:
+                    say(f"{w}x{h} is smaller than {tw}x{th}; it will look soft")
+            if "ratio" in r:
+                lo, hi = r["ratio"]
+                if not (lo - 0.02 <= w / h <= hi + 0.02):
+                    say(f"aspect {w / h:.2f} is outside {lo:.2f} to {hi:.2f}; it will be cropped or letterboxed")
+            if "min_w" in r and w < r["min_w"]:
+                say(f"{w} px wide; at least {r['min_w']} px is recommended")
+            if "max_w" in r and w > r["max_w"]:
+                say(f"{w} px wide; emails show 600 px (1200 px for sharp screens)")
+        if kind == "gif" and "gif_mb" in r and mb > r["gif_mb"]:
+            say(f"{mb:.1f} MB GIF; keep email GIFs under {r['gif_mb']} MB so they load on phones")
+        if "max_mb" in r and mb > r["max_mb"]:
+            say(f"{mb:.1f} MB; the limit is about {r['max_mb']} MB")
+        key = "max_mb_video" if kind == "video" else "max_mb_image"
+        if key in r and mb > r[key]:
+            say(f"{mb:.1f} MB; over {r[key]} MB slows the page")
+    return out
+
+
+_CHECK_CACHE = {}
+
+
+def checks_for(meta):
+    """Checks stored at submit, or computed once for items submitted before checks existed."""
+    if "checks" in meta:
+        return meta["checks"]
+    key = meta["dir"]
+    if key not in _CHECK_CACHE:
+        base = os.path.join(ASSETS, meta["dir"])
+        if meta.get("kind") == "choice":
+            _CHECK_CACHE[key] = [{"context": c["context"], "msg": f'{o["label"]}: {c["msg"]}'} for o in meta.get("options", [])
+                                 for c in spec_checks(os.path.join(base, "options", o["file"]), o["kind"], meta.get("contexts"), o.get("media"))]
+        else:
+            _CHECK_CACHE[key] = spec_checks(os.path.join(base, meta["file"]), meta.get("kind"), meta.get("contexts"), meta.get("media"))
+    return _CHECK_CACHE[key]
+
+
+# ---------- agents, reminders, notifications ----------
+
+def agents_alive():
+    out = []
+    if not os.path.isdir(AGENTS):
+        return out
+    for name in os.listdir(AGENTS):
+        info = read_json(os.path.join(AGENTS, name))
+        if not info:
+            continue
+        try:
+            os.kill(int(info["pid"]), 0)
+        except ProcessLookupError:
+            try:
+                os.remove(os.path.join(AGENTS, name))
+            except OSError:
+                pass
+            continue
+        except (PermissionError, ValueError, KeyError):
+            pass
+        out.append({"project": info.get("project") or "", "since": info.get("since")})
+    return out
+
+
+def stale_hours():
+    return float(load_config().get("stale_hours", 12))
+
+
+def hours_since(ts):
+    if not ts:
+        return float("inf")
+    try:
+        return (datetime.datetime.now().astimezone() - datetime.datetime.fromisoformat(ts)).total_seconds() / 3600
+    except (TypeError, ValueError):
+        return 0
+
+
+def notify_new(meta):
+    """Opt-in push (ntfy). Sends the title and a board link only: no image, no reasoning."""
+    url = (load_config().get("notify") or {}).get("ntfy")
+    if not url:
+        return
+    cfg = load_config()
+    host = f"localhost:{PORT}"
+    if cfg.get("lan"):
+        addrs = lan_addresses()
+        if addrs:
+            host = f"{addrs[0][1]}:{PORT}"
+    title = f"{meta.get('project') + ': ' if meta.get('project') else ''}{meta['title']}"
+    req = urllib.request.Request(url, data=f"{meta['version']} is ready for review".encode(), method="POST",
+                                 headers={"Title": title.encode("ascii", "replace").decode(), "Click": f"http://{host}/#{meta['id']}",
+                                          "Tags": "eyes"})
+    try:
+        urllib.request.urlopen(req, timeout=5).close()
+    except OSError as e:
+        print(f"goodeye: notification not sent ({e})", file=sys.stderr)
 
 
 # ---------- scores ----------
@@ -288,13 +467,39 @@ def cmd_submit(a):
     slot = parse_slot(a.slot, a.slot_label) if a.slot else (prior[-1].get("slot") if prior else None)
     if slot:
         meta["slot"] = slot
+    meta["checks"] = checks_for(meta)
     write_json(os.path.join(vdir, "meta.json"), meta)
     ensure_server()
     print(f"submitted {a.id}@{version} ({meta['kind']}) -> {URL}/#{a.id}")
+    for c in meta["checks"]:
+        print(f"  SPEC WARNING [{c['context']}]: {c['msg']}")
+    if meta["checks"]:
+        print("  The reviewer sees these warnings. Fix and resubmit now if the placement is right, or explain in reasoning.")
+    notify_new(meta)
     print("next: run `goodeye wait` in the background to receive the verdict")
 
 
 def cmd_wait(a):
+    os.makedirs(AGENTS, exist_ok=True)
+    mine = os.path.join(AGENTS, f"{os.getpid()}.json")
+    write_json(mine, {"pid": os.getpid(), "project": a.project or "", "since": now()})
+    atexit.register(lambda: os.path.exists(mine) and os.remove(mine))
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    # Nudge once per 6 hours about changes the reviewer asked for that never came back (only when no new verdict is waiting).
+    pending_verdicts = [d for d in decisions() if d["decision_id"] not in set(read_json(DELIVERED, [])) and (not a.project or d.get("project") == a.project)]
+    reminded = read_json(REMINDED, {}) or {}
+    stale = [i for i in all_items() if i["status"] == "changes" and (not a.project or i["project"] == a.project)
+             and hours_since(i["versions"][-1]["decisions"][-1]["at"]) >= stale_hours()
+             and hours_since(reminded.get(i["id"] + "@" + i["versions"][-1]["version"], "")) >= 6]
+    if stale and not pending_verdicts:
+        for i in stale:
+            v = i["versions"][-1]
+            print(f"REMINDER: changes requested {hours_since(v['decisions'][-1]['at']):.0f} h ago on {i['id']}@{v['version']} ({i['title']}); no new version yet.")
+            print(f"  feedback: {v['decisions'][-1]['feedback'].strip()}")
+            reminded[i["id"] + "@" + v["version"]] = now()
+        write_json(REMINDED, reminded)
+        print("next: submit the new versions, then run `goodeye wait` again.")
+        return
     delivered = set(read_json(DELIVERED, []))
     start = time.time()
     while True:
@@ -574,7 +779,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             with open(os.path.join(HERE, "board.html"), "rb") as f:
                 return self.send(200, f.read(), "text/html; charset=utf-8", csp=BOARD_CSP)
         if path == "/api/items":
-            return self.send(200, all_items())
+            return self.send(200, {"items": all_items(), "agents": agents_alive(), "stale_hours": stale_hours()})
         if path.startswith("/files/"):
             rel = urllib.parse.unquote(path[len("/files/"):])
             full = os.path.realpath(os.path.join(ASSETS, rel))
@@ -818,6 +1023,60 @@ def cmd_serve(a):
     srv.serve_forever()
 
 
+def cmd_notify(a):
+    cfg = load_config()
+    if a.off:
+        cfg.pop("notify", None)
+        write_json(CONFIG, cfg)
+        print("Notifications off.")
+        return
+    if a.ntfy:
+        if not a.ntfy.startswith("https://"):
+            die("use an https:// ntfy topic URL, e.g. https://ntfy.sh/your-long-random-topic")
+        cfg["notify"] = {"ntfy": a.ntfy}
+        write_json(CONFIG, cfg)
+        print("Notifications on. Each new submission sends its title and a board link (no image, no reasoning) to that topic.")
+        print("Anyone who knows the topic name can read it: use a long random name.")
+    url = (cfg.get("notify") or {}).get("ntfy")
+    if not url:
+        die("not configured. Run: goodeye notify --ntfy https://ntfy.sh/<long-random-topic>")
+    if a.test or a.ntfy:
+        notify_new({"id": "test", "title": "GoodEye test notification", "version": "v1", "project": ""})
+        print("Sent a test notification.")
+
+
+def cmd_export(a):
+    """Copy each approved item's final file (pick 1 for choices) and a manifest into DIR."""
+    os.makedirs(a.dir, exist_ok=True)
+    manifest = []
+    for it in all_items():
+        if a.project and it["project"] != a.project:
+            continue
+        v = next((x for x in reversed(it["versions"]) if x["status"] in FILLED), None)
+        if not v:
+            continue
+        d = v["decisions"][-1]
+        rel = v["file"]
+        if v["kind"] == "choice" and d.get("ranking"):
+            opt = next((o for o in v["options"] if o["key"] == d["ranking"][0]["key"]), None)
+            rel = "options/" + opt["file"] if opt else rel
+        src = os.path.join(ASSETS, v["dir"], rel)
+        dest_dir = os.path.join(a.dir, it["id"])
+        os.makedirs(dest_dir, exist_ok=True)
+        dest = os.path.join(dest_dir, f"{re.sub(r'[^A-Za-z0-9._-]', '_', v['version'])}-{os.path.basename(rel)}")
+        shutil.copy2(src, dest)
+        notes = [d["feedback"].strip()] if d["feedback"].strip() else []
+        notes += [f"{r['key']}: {r['note'].strip()}" for r in (d.get("ranking") or []) + (d.get("option_notes") or []) if r.get("note", "").strip()]
+        manifest.append({"id": it["id"], "title": it["title"], "project": it["project"], "version": v["version"],
+                         "verdict": d["verdict"], "approved_at": d["at"], "file": os.path.relpath(dest, a.dir),
+                         "notes_to_apply": notes, "source_path": v.get("source_path", "")})
+    write_json(os.path.join(a.dir, "manifest.json"), manifest)
+    flagged = sum(1 for m in manifest if m["notes_to_apply"])
+    print(f"exported {len(manifest)} approved item(s) to {a.dir}")
+    if flagged:
+        print(f"{flagged} were approved with notes: the exported file is the version the reviewer saw, before the agent applied the notes.")
+
+
 def cmd_phone(a):
     """Turn phone mode on or off, restart the board, and print the link and QR code."""
     from goodeye_qr import qr_matrix, to_terminal
@@ -875,6 +1134,13 @@ def main():
     sv.add_argument("--port", type=int, default=PORT)
     sub.add_parser("open")
     sub.add_parser("demo", help="load sample items into the store so you can try the board")
+    nt = sub.add_parser("notify", help="phone notifications for new work (ntfy)")
+    nt.add_argument("--ntfy", help="https ntfy topic URL")
+    nt.add_argument("--off", action="store_true")
+    nt.add_argument("--test", action="store_true")
+    ex = sub.add_parser("export", help="copy approved final files plus a manifest")
+    ex.add_argument("dir")
+    ex.add_argument("--project")
     ph = sub.add_parser("phone", help="let your phone open the board over Wi-Fi")
     ph.add_argument("--off", action="store_true", help="turn phone mode off")
     ph.add_argument("--new-token", action="store_true", help="make a new link; every phone must scan again")
@@ -887,7 +1153,7 @@ def main():
         ensure_server()
         webbrowser.open(URL)
         return
-    {"submit": cmd_submit, "demo": cmd_demo, "phone": cmd_phone, "slot": cmd_slot, "wait": cmd_wait, "status": cmd_status, "serve": cmd_serve}[a.cmd](a)
+    {"submit": cmd_submit, "demo": cmd_demo, "phone": cmd_phone, "notify": cmd_notify, "export": cmd_export, "slot": cmd_slot, "wait": cmd_wait, "status": cmd_status, "serve": cmd_serve}[a.cmd](a)
 
 
 if __name__ == "__main__":

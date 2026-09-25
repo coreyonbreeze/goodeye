@@ -188,6 +188,57 @@ class GoodEyeTest(unittest.TestCase):
         c.request("GET", "/api/items", headers={"Host": f"127.0.0.1:{self.port}", "If-None-Match": etag})
         self.assertEqual(c.getresponse().status, 304)
 
+    def real_png(self, name, w, h):
+        import struct, zlib
+        raw = b"".join(b"\x00" + b"\x80\x80\x80" * w for _ in range(h))
+        chunk = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
+        return self.file(name, b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+                         + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+    def test_spec_checks_warn_the_agent(self):
+        wrong = self.real_png("header.png", 600, 400)
+        out = self.cli("submit", wrong, "--id", "xh", "--reasoning", self.reason, "--context", "x-banner").stdout
+        self.assertIn("SPEC WARNING [x-banner]", out)
+        right = self.real_png("header2.png", 1500, 500)
+        out = self.cli("submit", right, "--id", "xh2", "--reasoning", self.reason, "--context", "x-banner").stdout
+        self.assertNotIn("SPEC WARNING", out)
+
+    def test_export_copies_approved_files(self):
+        self.cli("submit", self.png, "--id", "keep", "--reasoning", self.reason)
+        self.cli("submit", self.png, "--id", "drop", "--reasoning", self.reason)
+        self.post({"id": "keep", "version": "v1", "verdict": "approved", "feedback": "move logo left"})
+        dest = os.path.join(self.tmp.name, "out")
+        out = self.cli("export", dest).stdout
+        self.assertIn("exported 1", out)
+        with open(os.path.join(dest, "manifest.json")) as f:
+            m = json.load(f)
+        self.assertEqual(m[0]["id"], "keep")
+        self.assertEqual(m[0]["notes_to_apply"], ["move logo left"])
+        self.assertTrue(os.path.isfile(os.path.join(dest, m[0]["file"])))
+
+    def test_stale_changes_remind_the_agent_once(self):
+        with open(os.path.join(self.env["GOODEYE_HOME"], "config.json"), "w") as f:
+            json.dump({"stale_hours": 0}, f)
+        self.cli("submit", self.png, "--id", "slow", "--reasoning", self.reason)
+        self.post({"id": "slow", "version": "v1", "verdict": "changes", "feedback": "bigger"})
+        self.wait_output()                                   # delivers the verdict
+        first = self.cli("wait", "--timeout", "2").stdout
+        self.assertIn("REMINDER", first)
+        again = self.cli("wait", "--timeout", "2", ok=False).stdout
+        self.assertNotIn("REMINDER", again)                  # once per 6 hours
+
+    def test_agent_presence_is_reported(self):
+        self.cli("submit", self.png, "--id", "p", "--reasoning", self.reason, "--project", "Demo")
+        w = subprocess.Popen(CLI + ["wait", "--project", "Demo"], env=self.env, stdout=subprocess.DEVNULL)
+        try:
+            time.sleep(1)
+            status, body = self.get("/api/items")
+            self.assertEqual(json.loads(body)["agents"][0]["project"], "Demo")
+        finally:
+            w.terminate(); w.wait(5)
+        time.sleep(0.3)
+        self.assertEqual(json.loads(self.get("/api/items")[1])["agents"], [])
+
     def test_demo_loads(self):
         self.cli("demo")
         out = self.cli("status").stdout

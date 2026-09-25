@@ -11,7 +11,7 @@ GoodEye is a local tool. By default the board listens on `127.0.0.1` only. Phone
 - **No framing.** `X-Frame-Options: DENY` and `frame-ancestors 'none'` stop click-jacking.
 - **Content Security Policy.** The board loads nothing from other origins. Uploaded files are served with a `sandbox` policy, so an SVG cannot run script.
 - **Store-only reads.** File paths are resolved and must stay inside the store. IDs are validated.
-- **No accounts, no network calls, no telemetry.** GoodEye never sends your work anywhere.
+- **No accounts, no telemetry.** GoodEye never sends your work anywhere. The one outside call is opt-in: `goodeye notify` posts the item title and a board link (no image, no reasoning) to the ntfy topic you choose. Anyone who knows a public ntfy topic name can read it, so use a long random name or your own ntfy server.
 
 ## What it does not protect against
 

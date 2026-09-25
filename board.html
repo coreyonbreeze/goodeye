@@ -274,6 +274,20 @@ table.delta td { white-space: nowrap; text-align: right; padding: 4px; border-bo
 }
 @media (max-width: 420px) { .opts { grid-template-columns: 1fr !important; } }
 #cardsbtn { display: none; }
+.checks { margin: 4px 20px 0; padding: 8px 12px; border-radius: 8px; background: rgba(217,149,30,.12); border: 1px solid rgba(217,149,30,.35); font-size: 13px; }
+.checks b { color: var(--warn); }
+.checks li { margin: 2px 0; }
+.checks ul { margin: 4px 0 0; padding-left: 18px; }
+.warnbadge { color: var(--warn); font-weight: 700; }
+.agentline { font-size: 12px; color: var(--text-muted); margin: 8px 0 0; display: flex; gap: 6px; align-items: center; }
+.agentline i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); display: inline-block; }
+.agentline.on i { background: var(--ok); box-shadow: 0 0 0 3px rgba(47,168,79,.2); }
+.stale { color: var(--bad); }
+.chips2 { display: flex; gap: 6px; flex-wrap: wrap; grid-column: 1 / -1; }
+.chips2 button { background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font-size: 12px; color: var(--text-secondary); cursor: pointer; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flash { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--bg); z-index: 4; flex-direction: column; gap: 8px; }
+.flash .cap { background: var(--accent); color: #fff; border-radius: 999px; padding: 3px 10px; font-size: 12px; }
+.flash img, .flash video, .flash canvas { max-width: 100%; max-height: 85%; object-fit: contain; }
 @media (max-width: 760px) {
   body.deckmode .app { display: none; }
   body.deckmode .toast { bottom: calc(env(safe-area-inset-bottom) + 104px); z-index: 70; max-width: calc(100% - 24px); text-align: center; }
@@ -363,6 +377,9 @@ table.delta td { white-space: nowrap; text-align: right; padding: 4px; border-bo
   .more q { display: block; color: var(--text-muted); font-size: 12px; font-style: italic; }
   .srow { display: grid; grid-template-columns: 1fr 52px 64px 64px; font-size: 13px; padding: 3px 0; font-variant-numeric: tabular-nums; }
   .srow .bar3 { color: var(--text-muted); font-size: 11px; text-align: right; }
+  .chips2 { flex-wrap: nowrap; overflow-x: auto; }
+  .chips2 button { flex: none; padding: 6px 12px; font-size: 13px; }
+  .checks { margin: 4px 12px 0; }
   .deckidle { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 10px; }
 }
 </style>
@@ -378,6 +395,7 @@ table.delta td { white-space: nowrap; text-align: right; padding: 4px; border-bo
     <header>
       <div class="qhead"><h1>GoodEye</h1><button class="phonebtn" id="phonebtn" title="Open this board on your phone">Phone</button></div>
       <div class="seg" id="filters"></div>
+      <div id="agentline" class="agentline"></div>
     </header>
     <div class="list" id="list"></div>
   </aside>
@@ -401,6 +419,7 @@ const FILTERS = [["pending", "Review"], ["changes", "Changes"], ["approved", "Ap
 const CTX = { "linkedin-banner": "LinkedIn banner", "linkedin-post": "LinkedIn post", "x-post": "X post", "x-banner": "X profile header", "instagram-post": "Instagram post",
   "instagram-story": "Instagram story", "email": "Email", "website-hero": "Website hero", "browser-tab": "Browser tab",
   "youtube-thumbnail": "YouTube thumbnail", "phone": "Phone" };
+let agents = [], staleH = 12;
 let started = false, items = [], filter = "pending", sel = { id: null, version: null, view: "asset", compare: false }, lastSig = "";
 
 const fileUrl = v => `/files/${v.dir.split("/").map(encodeURIComponent).join("/")}/${encodeURIComponent(v.file)}`;
@@ -422,6 +441,7 @@ function renderQueue() {
   const shown = items.filter(i => inFilter(i, filter));
   document.title = counts.pending ? `(${counts.pending}) GoodEye` : "GoodEye";
   $("#qcount").textContent = counts.pending || "";
+  const al = $("#agentline"); if (al) al.outerHTML = agentHtml().replace('class="agentline', 'id="agentline" class="agentline');
   if (typeof renderDeck === "function" && isPhone() && deckMode) setTimeout(renderDeck);
   const pos = shown.findIndex(i => i.id === sel.id);
   $("#qpos").textContent = pos >= 0 ? `${pos + 1} of ${shown.length}` : "";
@@ -429,7 +449,7 @@ function renderQueue() {
     const v = i.versions[i.versions.length - 1];
     return `<div class="row ${inslot ? "inslot" : ""} ${sel.id === i.id ? "on" : ""}" data-id="${esc(i.id)}"><div class="thumb">${thumbOf(i)}</div><div style="min-width:0">
       <div class="t">${esc(i.title)}</div>
-      <div class="m"><span class="pill st-${i.status}">${STATUS[i.status]}</span><span>${v.kind === "choice" ? `Choice · ${v.options.length}` : esc(v.version)}</span>${i.project ? `<span>${esc(i.project)}</span>` : ""}</div></div></div>`;
+      <div class="m">${checksOf(v).length ? `<span class="warnbadge" title="Spec check">⚠</span>` : ""}<span class="pill st-${i.status}">${STATUS[i.status]}</span>${i.status === "changes" && lastDecision(i) && (Date.now() - new Date(lastDecision(i).at)) / 36e5 >= staleH ? `<span class="stale">${Math.round((Date.now() - new Date(lastDecision(i).at)) / 36e5)} h</span>` : ""}<span>${v.kind === "choice" ? `Choice · ${v.options.length}` : esc(v.version)}</span>${i.project ? `<span>${esc(i.project)}</span>` : ""}</div></div></div>`;
   };
   const done = new Set(), out = [];
   shown.forEach(i => {
@@ -473,18 +493,19 @@ function renderMain() {
     <div class="head"><h2>${esc(it.title)}</h2><div class="sub">${esc(it.project ? it.project + " · " : "")}${esc(it.id)} · ${esc(v.kind)} · ${(v.size_bytes / 1048576).toFixed(1)} MB · submitted ${new Date(v.submitted_at).toLocaleString()}</div></div>
     <div class="bar"><span class="lbl">Version</span>${it.versions.map(x => `<span class="chip ${x === v ? "on" : ""}" data-v="${esc(x.version)}"><span class="pill st-${x.status}"></span>${esc(x.version)}</span>`).join("")}
       <span class="gap"></span>${prev ? `<label class="toggle"><input type="checkbox" id="cmp" ${sel.compare ? "checked" : ""}> Side by side with ${esc(prev.version)}</label>` : ""}</div>
-    ${reopenHtml(it)}${slotHtml(it)}
+    ${reopenHtml(it)}${checksHtml(v)}${slotHtml(it)}
     <div class="bar"><span class="lbl">View</span>${["asset", ...(v.contexts || []), ...(sibsOf(it).length > 1 ? ["slot"] : [])].map(c => `<span class="chip ${sel.view === c ? "on" : ""}" data-view="${esc(c)}">${c === "asset" ? "Asset" : c === "slot" ? `Compare all ${sibsOf(it).length} candidates` : "In context: " + esc(CTX[c] || c)}</span>`).join("")}</div>
     <div class="stage">${sel.view === "slot" ? slotGrid(it) : sel.compare && prev ? pane(prev, prev.version + " (previous)") + pane(v, v.version + " (this)") : pane(v, "")}</div>
     <div class="pbar" id="pbar" hidden></div>
     <div class="decide">
+      ${latest ? chipsHtml() : ""}
       <textarea id="fb" placeholder="${latest ? "Feedback for the agent. Click here and talk." : "This is an older version. Decisions go on the latest version."}" ${latest ? "" : "disabled"}>${esc(draft)}</textarea>
       <div class="btns">
         <button class="btn approve" data-d="approved" ${latest ? "" : "disabled"}><span><span class="lab">Approve</span><span class="sub">Done. No second review.</span></span><kbd>⌥A</kbd></button>
         <button class="btn changes" data-d="changes" ${latest ? "" : "disabled"}><span><span class="full">Request changes</span><span class="short">Changes</span><span class="sub">Comes back to your queue.</span></span><kbd>⌥C</kbd></button>
         <button class="btn reject" data-d="rejected" ${latest ? "" : "disabled"}>Reject <kbd>⌥R</kbd></button>
       </div>
-      <div class="note">Approve with notes: the agent makes those small changes and does not send it back. Request changes: you see a new version. J / K moves through the queue.</div>
+      <div class="note">Approve with notes: the agent makes those small changes and does not send it back. Request changes: you see a new version. J / K moves through the queue. Hold C to flash the previous version.</div>
     </div>`;
   const fbEl = $("#fb"), lab = $("#main .approve .lab"), sub = $("#main .approve .sub");
   const closing = toCloseFor(it).length, extra = closing ? ` Closes ${closing} other${closing > 1 ? "s" : ""}.` : "";
@@ -496,10 +517,43 @@ function renderMain() {
   const cmp = $("#cmp"); if (cmp) cmp.onchange = () => { sel.compare = cmp.checked; renderMain(); };
   wireSlot(it);
   wireReopen(it);
+  if ($("#fb")) wireChips($("#main"), $("#fb"));
   mountPlayers(it);
   afterRender();
 }
 
+const checksOf = v => (v && v.checks) || [];
+function checksHtml(v) {
+  const c = checksOf(v); if (!c.length) return "";
+  return `<div class="checks"><b>⚠ Spec check</b><ul>${c.map(x => `<li>${esc(CTX[x.context] || x.context)}: ${esc(x.msg)}</li>`).join("")}</ul></div>`;
+}
+function quickReplies() {
+  // Short phrases from past notes: frequent first, then recent. One tap adds them to the note.
+  const seen = new Map();
+  items.flatMap(i => i.versions.flatMap(v => v.decisions)).sort((a, b) => a.at.localeCompare(b.at)).forEach((d, n) => {
+    [d.feedback, ...(d.ranking || []).map(r => r.note)].filter(Boolean).forEach(t => t.split(/(?<=[.!?])\s+|\n+/).forEach(p => {
+      const k = p.trim().replace(/[.!?]+$/, ""); if (k.length < 4 || k.length > 70) return;
+      const e = seen.get(k.toLowerCase()) || { text: k, count: 0, last: 0 }; e.count++; e.last = n; seen.set(k.toLowerCase(), e);
+    }));
+  });
+  return [...seen.values()].sort((a, b) => b.count - a.count || b.last - a.last).slice(0, 6).map(e => e.text);
+}
+function chipsHtml() {
+  const q = quickReplies(); if (!q.length) return "";
+  return `<div class="chips2">${q.map(t => `<button type="button" data-chip="${esc(t)}" title="${esc(t)}">${esc(t)}</button>`).join("")}</div>`;
+}
+function wireChips(root, ta) {
+  root.querySelectorAll("[data-chip]").forEach(b => b.onclick = () => {
+    const t = b.dataset.chip, cur = ta.value.trim();
+    ta.value = cur ? `${cur}${/[.!?]$/.test(cur) ? "" : "."} ${t}.` : `${t}.`;
+    ta.dispatchEvent(new Event("input")); ta.focus(); haptic("tick");
+  });
+}
+function agentHtml(project) {
+  const a = agents.filter(x => !project || !x.project || x.project === project);
+  return a.length ? `<div class="agentline on"><i></i>Agent waiting${a[0].project ? ` (${esc(a[0].project)})` : ""}: verdicts are acted on now</div>`
+                  : `<div class="agentline"><i></i>No agent waiting: verdicts queue until one runs goodeye wait</div>`;
+}
 function reopenHtml(it) {
   return ["rejected", "not_chosen"].includes(it.status) ? `<div class="filled">${STATUS[it.status]}. Changed your mind?<button data-reopen>Reopen for review</button></div>` : "";
 }
@@ -551,7 +605,7 @@ function idleHtml() {
     <p>${items.length ? "Nothing needs your review. New work from the agent opens here by itself." : "Agents submit work with goodeye submit. Try goodeye demo to load samples."}</p>
     ${items.length ? `<div class="counts">${n("approved")} approved · ${waiting.length} waiting on the agent · ${rej} closed</div>` : ""}
     ${waiting.length ? `<div class="waitlist"><h3>Waiting on the agent · ${waiting.length}</h3>${waiting.map(i => `<div class="row" data-id="${esc(i.id)}"><div class="thumb">${thumbOf(i)}</div><div style="min-width:0">
-      <div class="t">${esc(i.title)}</div><div class="m"><span class="pill st-changes">Changes requested ${ago(lastDecision(i)?.at)}</span></div></div></div>`).join("")}</div>` : ""}
+      <div class="t">${esc(i.title)}</div><div class="m"><span class="pill st-changes">Changes requested ${ago(lastDecision(i)?.at)}</span>${(Date.now() - new Date(lastDecision(i)?.at)) / 36e5 >= staleH ? `<span class="stale">stale: the agent is reminded on its next wait</span>` : ""}</div></div></div>`).join("")}</div>` : ""}
   </div>`;
 }
 function wireIdle() { $("#main").querySelectorAll(".row[data-id]").forEach(r => r.onclick = () => select(r.dataset.id)); }
@@ -580,7 +634,7 @@ function renderChoice(it, v, latest, draft) {
   const hasNotes = draft.trim() || Object.values(d.notes).some(n => n.trim());
   $("#main").innerHTML = `
     <div class="head"><h2>${esc(it.title)}</h2><div class="sub">${esc(it.project ? it.project + " · " : "")}${esc(it.id)} · choice between ${opts.length} options · submitted ${new Date(v.submitted_at).toLocaleString()}</div></div>
-    ${reopenHtml(it)}${slotHtml(it)}
+    ${reopenHtml(it)}${checksHtml(v)}${slotHtml(it)}
     <div class="bar"><span class="lbl">Round</span>${it.versions.map(x => `<span class="chip ${x === v ? "on" : ""}" data-v="${esc(x.version)}"><span class="pill st-${x.status}"></span>${esc(x.version)}</span>`).join("")}</div>
     <div class="bar"><span class="lbl">View</span>${["options", ...(v.contexts || [])].map(c => `<span class="chip ${view === c ? "on" : ""}" data-view="${esc(c)}">${c === "options" ? "All options" : "In context: " + esc(CTX[c] || c)}</span>`).join("")}
       ${view === "options" ? `<span class="gap"></span><span class="lbl">Size</span>${[[4, "S"], [3, "M"], [2, "L"], [1, "XL"]].map(([n, l]) => `<span class="chip ${d.cols === n ? "on" : ""}" data-cols="${n}">${l}</span>`).join("")}` : ""}</div>
@@ -593,6 +647,7 @@ function renderChoice(it, v, latest, draft) {
     <div class="pbar" id="pbar" hidden></div>
     <div class="decide">
       <div style="grid-column:1/-1" class="picks">Your picks: ${picks}</div>
+      ${latest ? chipsHtml() : ""}
       <textarea id="fb" placeholder="${latest ? "Overall feedback, e.g. go with 1st but use the spacing from 2nd. Click here and talk." : "This is an older round. Decisions go on the latest round."}" ${latest ? "" : "disabled"}>${esc(draft)}</textarea>
       <div class="btns">
         <button class="btn approve" data-d="picked" ${latest && d.ranking.length ? "" : "disabled"}><span><span class="full">${hasNotes ? "Go with 1st pick + notes" : "Go with 1st pick"}</span><span class="short">Go with 1st</span><span class="sub">${hasNotes ? "Agent applies notes. No second review." : "Done. No second review."}</span></span><kbd>⌥A</kbd></button>
@@ -612,6 +667,7 @@ function renderChoice(it, v, latest, draft) {
   }
   wireSlot(it);
   wireReopen(it);
+  if ($("#fb")) wireChips($("#main"), $("#fb"));
   mountPlayers(it);
   afterRender();
 }
@@ -803,7 +859,7 @@ class Group {
       <input class="scrub" type="range" min="0" max="1000" step="1" value="0" aria-label="Timeline">
       <span class="time">0:00.00 / 0:00.00</span><span class="frm">frame – / –</span>
       <label class="toggle"><input type="checkbox" class="lp" checked> Loop</label>
-      ${isVideo ? `<button class="mute">Sound off</button>` : ""}<span class="fileloop"></span>`;
+      ${isVideo ? `<button class="mute">Sound off</button>` : ""}<button class="tnote" title="Add the current time to your note">Note at <span class="tt">0:00.00</span></button><span class="fileloop"></span>`;
     this.q = s => bar.querySelector(s);
     this.q(".play").onclick = () => this.toggle();
     bar.querySelectorAll(".stp").forEach(b => b.onclick = () => this.step(+b.dataset.s));
@@ -812,6 +868,13 @@ class Group {
     sc.addEventListener("input", () => { const t = sc.value / 1000 * this.lead.dur; this.each(p => p.seek(t)); });
     sc.addEventListener("pointerup", () => { this.scrubbing = false; if (this.wasPlaying) this.each(p => p.play()); });
     this.q(".lp").onchange = e => this.each(p => p.loop = e.target.checked);
+    this.q(".tnote").onclick = () => {
+      const ta = $("#fb"); if (!ta || ta.disabled) return;
+      this.each(p => p.pause());
+      const stamp = `[${clock(this.lead.time)}] `, cur = ta.value.replace(/\s+$/, "");
+      ta.value = (cur ? cur + "\n" : "") + stamp; ta.dispatchEvent(new Event("input"));
+      ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); haptic("tick");
+    };
     if (isVideo) this.q(".mute").onclick = e => { const m = !this.lead.el.muted; this.lead.el.muted = m; e.target.textContent = m ? "Sound off" : "Sound on"; };
     Promise.all(players.map(p => p.ready)).then(() => {
       if (!this.alive) return;
@@ -842,6 +905,7 @@ class Group {
     this.q(".play").textContent = p.playing ? "❚❚" : "▶";
     if (!this.scrubbing && d) this.q(".scrub").value = Math.round(p.time / d * 1000);
     this.q(".time").textContent = `${clock(p.time)} / ${clock(d)}`;
+    this.q(".tt").textContent = clock(p.time);
     this.q(".frm").textContent = p.frameCount ? `frame ${p.frame + 1} / ${p.frameCount}` : "";
   }
   destroy() { this.alive = false; cancelAnimationFrame(this.raf); this.each(p => p.pause()); }
@@ -1033,7 +1097,7 @@ async function load(force) {
   const sig = JSON.stringify(data);
   if (!force && sig === lastSig) return;
   const oldSel = item(sel.id), oldLen = oldSel ? oldSel.versions.length : 0;
-  items = data; lastSig = sig;
+  items = Array.isArray(data) ? data : data.items; agents = data.agents || []; staleH = data.stale_hours || 12; lastSig = sig;
   renderQueue();
   const it = item(sel.id);
   if (!it) {
@@ -1090,7 +1154,7 @@ function renderDeck() {
   if (!on || dragging) return;
   document.body.style.setProperty("--tbh", $("#topbar").offsetHeight + "px");
   const cards = deckCards();
-  $("#qpos").textContent = cards.length ? `${cards.length} left` : "";
+  $("#qpos").innerHTML = (agents.length ? `<span title="An agent is waiting" style="color:var(--ok)">●</span> ` : `<span title="No agent waiting" style="color:var(--text-muted)">○</span> `) + (cards.length ? `${cards.length} left` : "");
   const top = cards[0];
   if (top && deckTop === top.id + "@" + top.versions[top.versions.length - 1].version && $("#deck .card2")) return;
   deckTop = top ? top.id + "@" + top.versions[top.versions.length - 1].version : null;
@@ -1177,6 +1241,7 @@ function cardHtml(it, behind) {
         ${it.project ? `<span>${esc(it.project)}</span>` : ""}</div>
       ${v.kind === "choice" && v.question ? `<div class="sum"><b>${esc(v.question)}</b></div>` : `<div class="sum">${esc(r.summary)}</div>`}
       ${(r.changes || [])[0] ? `<div class="chg">Changed: ${esc(r.changes[0].change)}${r.changes.length > 1 ? ` +${r.changes.length - 1} more` : ""}</div>` : ""}
+      ${checksOf(v).length ? `<div class="warn">⚠ ${esc(CTX[checksOf(v)[0].context] || checksOf(v)[0].context)}: ${esc(checksOf(v)[0].msg)}${checksOf(v).length > 1 ? ` (+${checksOf(v).length - 1})` : ""}</div>` : ""}
       ${closing ? `<div class="warn">Approving closes ${closing} other candidate${closing > 1 ? "s" : ""} in ${esc(it.slot.label)}.</div>` : ""}
       ${behind ? "" : more}
     </div></div>`;
@@ -1299,13 +1364,14 @@ function openSheet(kind, it, el) {
   const title = kind === "notes" ? "Notes for the agent" : "What should change?";
   $("#sheet").innerHTML = `<div class="panel">
     <h3>${title}</h3><div class="hint">${kind === "notes" ? "Tap the mic on your keyboard to dictate. Then Approve: the agent applies these notes without sending it back." : "Tap the mic on your keyboard to dictate. The agent makes a new version and it comes back to you."}</div>
+    ${chipsHtml()}
     <textarea id="sheetfb" placeholder="${kind === "notes" ? "e.g. nudge the logo left" : "e.g. the headline is too small on mobile"}">${esc(deckNotes[it.id] || "")}</textarea>
     <div class="row2">${kind === "notes"
       ? `<button class="btn" data-s="cancel" style="background:var(--surface-3)">Done</button><button class="btn approve" data-s="approve">Approve with notes</button>`
       : `<button class="btn" data-s="cancel" style="background:var(--surface-3)">Cancel</button><button class="btn changes" data-s="send">Send changes</button>`}</div>
     ${kind === "changes" ? `<button class="link" data-s="reject">Reject instead (stop work on it)</button>` : ""}</div>`;
   $("#sheet").hidden = false;
-  const ta = $("#sheetfb"); setTimeout(() => ta.focus(), 50);
+  const ta = $("#sheetfb"); wireChips($("#sheet"), ta); setTimeout(() => ta.focus(), 50);
   const close = () => { deckNotes[it.id] = kind === "notes" ? ta.value : deckNotes[it.id]; $("#sheet").hidden = true; deckTop = null; renderDeck(); };
   $("#sheet").onclick = e => { if (e.target.id === "sheet") close(); };
   $("#sheet").querySelectorAll("[data-s]").forEach(b => b.onclick = () => {
@@ -1408,6 +1474,23 @@ let poll = null;
 const startPoll = () => { if (!poll) poll = setInterval(() => load(false).catch(() => {}), 3000); };
 const stopPoll = () => { clearInterval(poll); poll = null; };
 document.addEventListener("visibilitychange", () => { if (document.hidden) stopPoll(); else { load(false).catch(() => {}); startPoll(); } });
+let flashOn = false;
+function flashPrev(on) {
+  const it = item(sel.id); if (!it || on === flashOn) return;
+  const v = ver(it, sel.version), prev = it.versions[it.versions.indexOf(v) - 1];
+  const stage = $(".stage"); if (!stage || !prev || v.kind === "choice") return;
+  flashOn = on;
+  if (on) {
+    stage.style.position = "relative";
+    stage.insertAdjacentHTML("beforeend", `<div class="flash"><span class="cap">Previous: ${esc(prev.version)}</span>${prev.kind === "video" ? `<video src="${fileUrl(prev)}" autoplay muted loop playsinline></video>` : `<img src="${fileUrl(prev)}">`}</div>`);
+    haptic("tick");
+  } else stage.querySelector(".flash")?.remove();
+}
+document.addEventListener("keydown", e => { if ((e.key === "c" || e.key === "C") && !e.repeat && !/INPUT|TEXTAREA/.test(e.target.tagName) && !e.metaKey && !e.ctrlKey && !e.altKey) flashPrev(true); });
+document.addEventListener("keyup", e => { if (e.key === "c" || e.key === "C") flashPrev(false); });
+let press = null;
+document.addEventListener("pointerdown", e => { if (!deckMode || !isPhone()) { if (e.target.closest(".stage") && !e.target.closest("button, input, .pbar")) press = setTimeout(() => flashPrev(true), 380); } });
+["pointerup", "pointercancel", "pointerleave"].forEach(t => document.addEventListener(t, () => { clearTimeout(press); flashPrev(false); }));
 addEventListener("hashchange", () => { const id = decodeURIComponent(location.hash.slice(1)); if (id && id !== sel.id && item(id)) select(id); });
 load(true);
 startPoll();
