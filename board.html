@@ -362,7 +362,8 @@ table.delta td { white-space: nowrap; text-align: right; padding: 4px; border-bo
   .frames i.on { background: #fff; }
   .flabel { position: absolute; left: 10px; bottom: 8px; z-index: 2; background: rgba(0,0,0,.6); color: #fff; font-size: 11px; padding: 3px 8px; border-radius: 999px; }
   .cfit { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-  .cfit > div { transform-origin: center center; flex: none; }
+  .cfit > div { transform-origin: center center; flex: none; width: max-content; }
+  .cfit .mock-note { display: none; }
   .coach { position: absolute; inset: 0; z-index: 5; background: rgba(0,0,0,.72); border-radius: 18px; display: flex; flex-direction: column;
     justify-content: center; gap: 16px; padding: 24px; color: #fff; font-size: 16px; }
   .coach b { display: inline-block; width: 92px; } .coach .g { color: var(--ok); } .coach .a { color: var(--warn); }
@@ -1203,7 +1204,18 @@ function renderDeck() {
 const expanded = {};
 function cardFrames(it) {
   const v = it.versions[it.versions.length - 1];
-  return ["asset", ...(it.versions.length > 1 && v.kind !== "choice" ? ["prev"] : []), ...(v.contexts || [])];
+  // Mockups that show a desktop and a phone screen become two frames on the card, each full width.
+  return ["asset", ...(it.versions.length > 1 && v.kind !== "choice" ? ["prev"] : []),
+          ...(v.contexts || []).flatMap(c => DUAL.has(c) ? [c + "|desktop", c + "|phone"] : [c])];
+}
+const DUAL = new Set(["website-hero", "email", "linkedin-banner", "linkedin-company-cover", "x-banner"]);
+function mockupPart(ctx, v, part) {
+  // Each dual mockup is a wrapper with the desktop screen first and the phone screen second; keep one.
+  const t = document.createElement("div");
+  t.innerHTML = mockup(ctx, v);
+  const wrap = t.firstElementChild;
+  if (part && wrap && wrap.children.length === 2) wrap.children[part === "desktop" ? 1 : 0].remove();
+  return t.innerHTML;
 }
 let infoTapStart = null;
 document.addEventListener("pointerup", e => {                     // tap on expanded info collapses it (scrolling does not)
@@ -1228,9 +1240,10 @@ function cardHtml(it, behind) {
   const delta = lead && prev?.scores?.[lead[0]] ? lead[1].value - prev.scores[lead[0]].value : null;
   const closing = toCloseFor(it).length;
   const frames = cardFrames(it), fi = Math.min(frameIdx[it.id] || 0, frames.length - 1), f = frames[fi];
-  const inner = f === "asset" ? deckMedia(v) : f === "prev" ? deckMedia(prev) : `<div class="cfit"><div>${mockup(f, v)}</div></div>`;
+  const [fctx, fpart] = String(f).split("|");
+  const inner = f === "asset" ? deckMedia(v) : f === "prev" ? deckMedia(prev) : `<div class="cfit"><div>${mockupPart(fctx, v, fpart)}</div></div>`;
   const flabel = f === "asset" ? (frames.length > 1 ? `${esc(v.version)} · tap right for ${frames[1] === "prev" ? "the previous version" : "mockups"}` : "")
-    : f === "prev" ? `Previous: ${esc(prev.version)} · compare` : "In context: " + esc(CTX[f] || f);
+    : f === "prev" ? `Previous: ${esc(prev.version)} · compare` : "In context: " + esc(CTX[fctx] || fctx) + (fpart ? ` · ${fpart}` : "");
   const body = v.kind === "choice" ? choiceGrid(v) : `<div class="cmedia" data-media>${frames.length > 1 ? `<div class="frames">${frames.map((_, i) => `<i class="${i === fi ? "on" : ""}"></i>`).join("")}</div>
     <div class="flabel">${flabel}</div>` : ""}${inner}</div>`;
   const exp = expanded[it.id];
