@@ -301,7 +301,11 @@ table.delta td { white-space: nowrap; text-align: right; padding: 4px; border-bo
     display: flex; flex-direction: column; box-shadow: 0 12px 30px rgba(0,0,0,.35); touch-action: none; user-select: none; -webkit-user-select: none; will-change: transform; }
   .card2.behind { transform: scale(.94) translateY(14px); opacity: .6; pointer-events: none; }
   .card2.fly { transition: transform .28s ease-out, opacity .28s; }
-  .card2.snap { transition: transform .2s cubic-bezier(.2,.8,.3,1.2); }
+  .card2.snap { transition: transform .38s cubic-bezier(.18,.89,.32,1.28); }
+  .card2.snap .stamp { transition: opacity .2s ease-out; }
+  .card2, .card2 * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  .card2 textarea, .card2 input { -webkit-user-select: text; user-select: text; }
+  body.deckmode { overscroll-behavior: none; }
   .cmedia { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 10px;
     background: repeating-conic-gradient(#232322 0 25%, #1c1c1b 0 50%) 0 0/18px 18px; }
   .cmedia img, .cmedia video, .cmedia canvas { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; display: block; pointer-events: none; }
@@ -1290,7 +1294,9 @@ function startDeckGifs(root) {
   }
 }
 function wireCard(el, it) {
-  let sx = 0, sy = 0, dx = 0, dy = 0, pid = null;
+  let sx = 0, sy = 0, dx = 0, dy = 0, pid = null, t0 = 0, moved = 0;
+  // iOS: stop Safari from claiming the gesture (it would cancel our drag) while a finger is on the card.
+  el.addEventListener("touchmove", e => { if (pid !== null) e.preventDefault(); }, { passive: false });
   const stamps = { yes: el.querySelector(".stamp.yes"), no: el.querySelector(".stamp.no"), later: el.querySelector(".stamp.later") };
   let zone = null;
   const paint = () => {
@@ -1306,15 +1312,25 @@ function wireCard(el, it) {
       if (e.target.closest(".card2.expanded .cinfo") && !e.target.closest("button")) infoTapStart = { x: e.clientX, y: e.clientY };
       return;
     }
-    pid = e.pointerId; sx = e.clientX; sy = e.clientY; dx = dy = 0; dragging = true;
+    pid = e.pointerId; sx = e.clientX; sy = e.clientY; dx = dy = 0; moved = 0; t0 = performance.now(); dragging = true;
     el.classList.remove("snap"); el.setPointerCapture(pid);
   });
-  el.addEventListener("pointermove", e => { if (e.pointerId !== pid) return; dx = e.clientX - sx; dy = Math.min(0, e.clientY - sy) + Math.max(0, e.clientY - sy) * 0.2; paint(); });
+  el.addEventListener("pointermove", e => {
+    if (e.pointerId !== pid) return;
+    dx = e.clientX - sx; dy = Math.min(0, e.clientY - sy) + Math.max(0, e.clientY - sy) * 0.2;
+    moved = Math.max(moved, Math.hypot(dx, e.clientY - sy));          // furthest the finger got, so a drag back to center is not a tap
+    paint();
+  });
+  const snapHome = () => {
+    el.classList.remove("fly"); el.classList.add("snap"); dx = dy = 0; paint();
+    el.addEventListener("transitionend", () => el.classList.remove("snap"), { once: true });
+  };
   const end = e => {
     if (e.pointerId !== pid) return;
     pid = null; dragging = false;
     const w = innerWidth;
-    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) {                     // a tap, not a swipe
+    if (e.type === "pointercancel") return snapHome();              // the browser took the gesture: never a tap, never a verdict
+    if (moved < 8 && performance.now() - t0 < 350) {                 // a tap: short and still
       const hit = [...el.querySelectorAll("[data-opt]")].find(o => { const b = o.getBoundingClientRect(); return e.clientX >= b.left && e.clientX <= b.right && e.clientY >= b.top && e.clientY <= b.bottom; });
       if (hit) { toggleRankDeck(it.versions[it.versions.length - 1], hit.dataset.opt); return; }
       const m = el.querySelector("[data-media]"), r = m && m.getBoundingClientRect();   // pointer capture retargets to the card
@@ -1325,7 +1341,7 @@ function wireCard(el, it) {
     if (dx > w * 0.28) act("approve", it, el, dx, dy);
     else if (dx < -w * 0.28) act("changes", it, el, dx, dy);
     else if (dy < -140 && Math.abs(dx) < 80) act("later", it, el, dx, dy);
-    else { el.classList.add("snap"); dx = dy = 0; paint(); }
+    else snapHome();                                                 // not far enough: spring back, nothing else
   };
   el.addEventListener("pointerup", end);
   el.addEventListener("pointercancel", end);
