@@ -54,11 +54,11 @@ class GoodEyeTest(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
         return r
 
-    def post(self, body, headers=None, raw=None):
+    def post(self, body, headers=None, raw=None, path="/api/decide"):
         c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
         h = {"Content-Type": "application/json", "Host": f"127.0.0.1:{self.port}"}
         h.update(headers or {})
-        c.request("POST", "/api/decide", raw if raw is not None else json.dumps(body), h)
+        c.request("POST", path, raw if raw is not None else json.dumps(body), h)
         r = c.getresponse()
         return r.status, json.loads(r.read() or b"{}")
 
@@ -238,6 +238,15 @@ class GoodEyeTest(unittest.TestCase):
             w.terminate(); w.wait(5)
         time.sleep(0.3)
         self.assertEqual(json.loads(self.get("/api/items")[1])["agents"], [])
+
+    def test_settings_round_trip(self):
+        self.assertEqual(self.post({"stale_hours": 5}, raw=None, headers=None, path="/api/settings")[0], 200)
+        self.assertEqual(self.post({"ntfy": "http://insecure/topic"}, path="/api/settings")[0], 400)
+        self.assertEqual(self.post({"ntfy": "https://ntfy.sh/a-long-topic-name", "notify_enabled": False}, path="/api/settings")[0], 200)
+        s = json.loads(self.get("/api/settings")[1])
+        self.assertEqual(s["stale_hours"], 5)
+        self.assertEqual(s["notify"]["enabled"], False)
+        self.assertEqual(self.post({"stale_hours": 5}, {"Origin": "https://evil.example"}, path="/api/settings")[0], 403)
 
     def test_demo_loads(self):
         self.cli("demo")

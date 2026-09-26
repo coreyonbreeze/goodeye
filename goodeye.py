@@ -17,7 +17,7 @@ Store: $GOODEYE_HOME (default ~/.goodeye). Port: $GOODEYE_PORT (default 4400). P
 """
 import argparse, atexit, signal, urllib.request, datetime, threading, http.server, http.cookies, webbrowser, zlib, struct, secrets, hmac, gzip, hashlib, io, json, mimetypes, os, re, shutil, socket, subprocess, sys, time, urllib.parse, uuid
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 HOME = os.path.expanduser(os.environ.get("GOODEYE_HOME", "~/.goodeye"))
 ASSETS = os.path.join(HOME, "assets")
 DECISIONS = os.path.join(HOME, "decisions.jsonl")
@@ -277,12 +277,13 @@ def hours_since(ts):
         return 0
 
 
-def notify_new(meta):
+def notify_new(meta, force=False):
     """Opt-in push (ntfy). Sends the title and a board link only: no image, no reasoning."""
-    url = (load_config().get("notify") or {}).get("ntfy")
-    if not url:
-        return
     cfg = load_config()
+    n = cfg.get("notify") or {}
+    url = n.get("ntfy")
+    if not url or (n.get("enabled") is False and not force):
+        return
     host = f"localhost:{PORT}"
     if cfg.get("lan"):
         addrs = lan_addresses()
@@ -710,6 +711,34 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.client_is_local() and self.host_is_local()   # a CLI client on this machine
         return origin.lower() == "http://" + (self.headers.get("Host") or "").lower()
 
+    def save_settings(self, body):
+        """Board-wide settings. Phone mode is not switchable here: turning it off from a phone would lock the phone out."""
+        with LOCK:
+            cfg = load_config()
+            n = dict(cfg.get("notify") or {})
+            if "ntfy" in body:
+                url = str(body["ntfy"] or "").strip()
+                if url and not re.match(r"^https://[A-Za-z0-9.-]+(:\d+)?/[A-Za-z0-9_-]{8,}$", url):
+                    return self.send(400, {"error": "use an https ntfy topic URL with a long topic name"})
+                if url:
+                    n["ntfy"] = url
+                else:
+                    n.pop("ntfy", None)
+            if "notify_enabled" in body:
+                n["enabled"] = bool(body["notify_enabled"])
+            cfg["notify"] = n
+            if "stale_hours" in body:
+                try:
+                    cfg["stale_hours"] = max(1.0, min(24 * 14.0, float(body["stale_hours"])))
+                except (TypeError, ValueError):
+                    return self.send(400, {"error": "stale_hours must be a number"})
+            write_json(CONFIG, cfg)
+        if body.get("test_notify"):
+            if not n.get("ntfy"):
+                return self.send(400, {"error": "set an ntfy topic first"})
+            notify_new({"id": "test", "title": "GoodEye test notification", "version": "v1", "project": ""}, force=True)
+        return self.send(200, {"ok": True})
+
     def token_login(self):
         """/?t=TOKEN from the QR code: set a long-lived cookie, then redirect so the token leaves the address bar."""
         q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
@@ -770,6 +799,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.send(200, json.dumps(MANIFEST).encode(), "application/manifest+json")
         if path in ("/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"):
             return self.send(200, app_icon(512 if "512" in path else 192 if "192" in path else 180), "image/png", cache="max-age=86400")
+        if path == "/api/settings":
+            cfg = load_config()
+            n = cfg.get("notify") or {}
+            return self.send(200, {"version": __version__, "notify": {"configured": bool(n.get("ntfy")), "enabled": bool(n.get("ntfy")) and n.get("enabled") is not False,
+                                                                      "topic": n.get("ntfy", "")},
+                                   "stale_hours": stale_hours(), "phone_mode": bool(cfg.get("lan")), "local": self.client_is_local()})
         if path == "/api/pair":
             if not self.client_is_local():
                 return self.send(403, {"error": "pair from this computer"})
@@ -836,7 +871,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         if not self.allowed_host() or not self.allowed_origin():
             return self.send(403, {"error": "forbidden origin"})
-        if urllib.parse.urlparse(self.path).path != "/api/decide":
+        route = urllib.parse.urlparse(self.path).path
+        if route not in ("/api/decide", "/api/settings"):
             return self.send(404, {"error": "not found"})
         # A JSON content type forces a CORS preflight for cross-site callers, which this server never approves.
         if (self.headers.get("Content-Type") or "").split(";")[0].strip().lower() != "application/json":
@@ -853,6 +889,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.send(400, {"error": "bad json"})
         if not isinstance(body, dict):
             return self.send(400, {"error": "bad json"})
+        if route == "/api/settings":
+            return self.save_settings(body)
         verdict = body.get("verdict")
         if verdict not in VERDICTS:
             return self.send(400, {"error": "verdict must be one of " + ", ".join(VERDICTS)})
@@ -998,8 +1036,8 @@ def decide_local(asset_id, version, verdict, feedback):
 
 def watch_code():
     """Restart the server in place when this file changes (git pull), so an update never leaves a stale server."""
-    watched = [os.path.realpath(__file__), os.path.join(HERE, "goodeye_qr.py"), CONFIG]
-    stamp = lambda: [os.path.getmtime(p) if os.path.exists(p) else 0 for p in watched]
+    watched = [os.path.realpath(__file__), os.path.join(HERE, "goodeye_qr.py")]
+    stamp = lambda: [os.path.getmtime(p) if os.path.exists(p) else 0 for p in watched] + [bool(load_config().get("lan"))]
     start = stamp()
     while True:
         time.sleep(2)

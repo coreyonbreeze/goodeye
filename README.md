@@ -133,6 +133,13 @@ On a phone the board is a card deck:
 - Haptics mark the commit point of a swipe and each verdict (Android vibration; iPhone on iOS 18+ uses the system switch haptic).
 - Add it to your home screen for a full-screen app. **Details** (or the ☰ queue) opens the full layout.
 
+## Settings
+
+**⚙ Settings** (top bar on a phone, queue header on desktop) has two parts:
+
+- **All devices** (saved in `~/.goodeye/config.json`): phone notifications on or off, the ntfy topic, a test button, and how many hours before a change request is flagged as stale. Phone mode is shown but only switched on the computer (`goodeye phone` / `--off`), so a phone cannot lock itself out.
+- **This device** (saved in the browser): vibration, undo window (3 to 8 seconds), swipe distance, whether the phone opens to cards or the list, theme (system, dark, light), jumping to the next item after a verdict, quick-reply chips, and replaying the swipe tutorial.
+
 ## Keyboard
 
 `J` / `K` next and previous item. Hold `C` to flash the previous version. `⌥A` approve, `⌥C` request changes, `⌥R` reject (these work while you type). `1` to `9` rank options in a choice. `Space` play or pause, `,` / `.` or the arrow keys step one frame.

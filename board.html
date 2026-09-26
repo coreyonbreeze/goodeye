@@ -23,6 +23,15 @@
   --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
   --mock-bg: #f3f2ef; --mock-card: #ffffff; --mock-ink: #1f1f1f; --mock-skel: #e3e2de;
 }
+:root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #eeeeec; --surface-1: #fcfcfb; --surface-2: #f3f3f1; --surface-3: #e8e8e5;
+    --line: #dcdbd6; --grid: #e6e5e0;
+    --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #77766f;
+    --accent: #2a78d6;
+    --ok: #1e8a3c; --warn: #b87700; --bad: #c93b3b; --pending: #77766f;
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948;
+}
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
     color-scheme: light;
@@ -225,6 +234,9 @@ table.delta td { white-space: nowrap; text-align: right; padding: 4px; border-bo
   #topbar button { background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 15px; min-height: 40px; }
   #qcount:not(:empty) { background: var(--accent); color: #fff; border-radius: 999px; padding: 1px 7px; font-size: 12px; margin-left: 4px; }
   #qpos { margin-left: auto; color: var(--text-muted); font-size: 13px; }
+  #gearbtn { display: inline-block; }
+  .settings { align-items: flex-end; padding: 0; }
+  .settings .box { max-width: none; border-radius: 18px 18px 0 0; max-height: 92dvh; padding-bottom: calc(env(safe-area-inset-bottom) + 20px); }
   .queue { position: fixed; inset: 0 auto 0 0; width: min(86vw, 340px); z-index: 40; transform: translateX(-102%); transition: transform .22s ease;
     padding-top: env(safe-area-inset-top); box-shadow: 8px 0 30px rgba(0,0,0,.4); }
   body.qopen .queue { transform: none; }
@@ -274,6 +286,22 @@ table.delta td { white-space: nowrap; text-align: right; padding: 4px; border-bo
 }
 @media (max-width: 420px) { .opts { grid-template-columns: 1fr !important; } }
 #cardsbtn { display: none; }
+#gearbtn { display: none; }
+.settings .box { text-align: left; max-width: 520px; max-height: 88vh; overflow-y: auto; }
+.settings h3 { margin: 0 0 4px; font-size: 18px; }
+.settings h4 { margin: 18px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+.srow2 { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--grid); font-size: 14px; }
+.srow2 small { display: block; color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+.srow2 select, .srow2 input[type=text], .srow2 input[type=number] { background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; color: inherit; font: inherit; font-size: 14px; }
+.srow2 input[type=text] { width: 100%; }
+.switch2 { position: relative; width: 44px; height: 26px; flex: none; }
+.switch2 input { opacity: 0; width: 100%; height: 100%; margin: 0; position: absolute; cursor: pointer; z-index: 1; }
+.switch2 span { position: absolute; inset: 0; background: var(--surface-3); border-radius: 999px; transition: background .15s; }
+.switch2 span::after { content: ""; position: absolute; left: 3px; top: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.switch2 input:checked + span { background: var(--ok); }
+.switch2 input:checked + span::after { transform: translateX(18px); }
+.sbtn { background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; font-size: 13px; cursor: pointer; color: inherit; }
+.smeta { font-size: 12px; color: var(--text-muted); margin-top: 14px; }
 .checks { margin: 4px 20px 0; padding: 8px 12px; border-radius: 8px; background: rgba(217,149,30,.12); border: 1px solid rgba(217,149,30,.35); font-size: 13px; }
 .checks b { color: var(--warn); }
 .checks li { margin: 2px 0; }
@@ -393,7 +421,7 @@ table.delta td { white-space: nowrap; text-align: right; padding: 4px; border-bo
 </style>
 </head>
 <body>
-<div id="topbar"><button id="qbtn" aria-label="Open queue">☰ <span id="qcount"></span></button><b>GoodEye</b><span id="qpos"></span><button id="cardsbtn">Cards</button></div>
+<div id="topbar"><button id="qbtn" aria-label="Open queue">☰ <span id="qcount"></span></button><b>GoodEye</b><span id="qpos"></span><button id="cardsbtn">Cards</button><button id="gearbtn" aria-label="Settings">⚙</button></div>
 <div id="deck" hidden></div>
 <div id="sheet" hidden></div>
 <div id="undo" hidden></div>
@@ -401,7 +429,7 @@ table.delta td { white-space: nowrap; text-align: right; padding: 4px; border-bo
 <div class="app">
   <aside class="queue" id="queue">
     <header>
-      <div class="qhead"><h1>GoodEye</h1><button class="phonebtn" id="phonebtn" title="Open this board on your phone">Phone</button></div>
+      <div class="qhead"><h1>GoodEye</h1><span><button class="phonebtn" id="phonebtn" title="Open this board on your phone">Phone</button> <button class="phonebtn" id="gearbtn2" title="Settings">⚙ Settings</button></span></div>
       <div class="seg" id="filters"></div>
       <div id="agentline" class="agentline"></div>
     </header>
@@ -547,6 +575,7 @@ function quickReplies() {
   return [...seen.values()].sort((a, b) => b.count - a.count || b.last - a.last).slice(0, 6).map(e => e.text);
 }
 function chipsHtml() {
+  if (!prefs.chips) return "";
   const q = quickReplies(); if (!q.length) return "";
   return `<div class="chips2">${q.map(t => `<button type="button" data-chip="${esc(t)}" title="${esc(t)}">${esc(t)}</button>`).join("")}</div>`;
 }
@@ -1080,7 +1109,8 @@ async function decide(verdict, confirmed) {
   const saved = await res.json();
   toast(`${STATUS[verdict]}: ${it.title} ${v.version}.${(saved.closed || []).length ? ` Closed ${saved.closed.length} other candidate${saved.closed.length > 1 ? "s" : ""}.` : ""} Sent to the agent.`);
   await load(true);
-  const next = items.find(i => i.status === "pending" && i.id !== it.id);
+  const next = prefs.advance ? items.find(i => i.status === "pending" && i.id !== it.id) : null;
+  if (!prefs.advance) { renderQueue(); renderMain(); renderSide(); return; }
   if (next) select(next.id); else showIdle();
 }
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2600); }
@@ -1131,12 +1161,25 @@ async function load(force) {
   if (it.versions.length !== oldLen) { sel.version = it.versions[it.versions.length - 1].version; renderMain(); toast(`New version: ${it.title} ${sel.version}`); }
   renderSide();
 }
+/* ---------- per-device preferences (localStorage) ---------- */
+const PREF_DEFAULTS = { haptics: true, undo: 4, swipe: "normal", start: "cards", theme: "auto", advance: true, chips: true };
+let prefs = { ...PREF_DEFAULTS };
+try { prefs = { ...PREF_DEFAULTS, ...JSON.parse(localStorage.getItem("goodeye.prefs") || "{}") }; } catch (e) {}
+function savePrefs() { try { localStorage.setItem("goodeye.prefs", JSON.stringify(prefs)); } catch (e) {} applyPrefs(); }
+function applyPrefs() {
+  if (prefs.theme === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = prefs.theme;
+  document.querySelector('meta[name="theme-color"]').content = getComputedStyle(document.documentElement).getPropertyValue("--surface-1").trim() || "#111111";
+}
+applyPrefs();
+const commitFrac = () => prefs.swipe === "relaxed" ? 0.38 : 0.28;
+
 /* ---------- haptics ----------
    Android: the Vibration API. iPhone (iOS 18+): Safari gives no vibration API, but toggling a native
    switch control plays the system haptic tick, so we click a hidden one. One tick per pulse. */
 const HAPTIC = { tick: [8], threshold: [14], approve: [12, 60, 22], changes: [30], reject: [45, 50, 45], later: [8], undo: [8, 40, 8], error: [20, 60, 20, 60, 20] };
 let hswitch = null;
 function haptic(kind) {
+  if (!prefs.haptics) return;
   const pat = HAPTIC[kind] || HAPTIC.tick;
   if (navigator.vibrate) { try { navigator.vibrate(pat); return; } catch (e) {} }
   if (!/iPhone|iPad/.test(navigator.userAgent)) return;
@@ -1151,7 +1194,7 @@ function haptic(kind) {
 }
 
 /* ---------- phone: card deck (swipe right approve, left changes, up later) ---------- */
-let deckMode = true, skipped = [], pendingDec = null, dragging = false, deckTop = null;
+let deckMode = prefs.start !== "list", skipped = [], pendingDec = null, dragging = false, deckTop = null;
 const frameIdx = {};
 function fitCard(root) {
   root.querySelectorAll(".cfit").forEach(f => {
@@ -1315,7 +1358,7 @@ function wireCard(el, it) {
   const stamps = { yes: el.querySelector(".stamp.yes"), no: el.querySelector(".stamp.no"), later: el.querySelector(".stamp.later") };
   let zone = null;
   const paint = () => {
-    const w = innerWidth, z = dx > w * 0.28 ? "yes" : dx < -w * 0.28 ? "no" : (dy < -140 && Math.abs(dx) < 80) ? "later" : null;
+    const w = innerWidth, f = commitFrac(), z = dx > w * f ? "yes" : dx < -w * f ? "no" : (dy < -140 && Math.abs(dx) < 80) ? "later" : null;
     if (z !== zone) { if (z) haptic("threshold"); zone = z; }      // a tick when the swipe crosses the line that commits it
     el.style.transform = `translate(${dx}px, ${dy}px) rotate(${dx * 0.06}deg)`;
     stamps.yes.style.opacity = Math.max(0, Math.min(1, dx / 110));
@@ -1353,8 +1396,8 @@ function wireCard(el, it) {
       else if (el.querySelector(".cinfo").getBoundingClientRect().top <= e.clientY) toggleInfo(it);
       return;
     }
-    if (dx > w * 0.28) act("approve", it, el, dx, dy);
-    else if (dx < -w * 0.28) act("changes", it, el, dx, dy);
+    if (dx > w * commitFrac()) act("approve", it, el, dx, dy);
+    else if (dx < -w * commitFrac()) act("changes", it, el, dx, dy);
     else if (dy < -140 && Math.abs(dx) < 80) act("later", it, el, dx, dy);
     else snapHome();                                                 // not far enough: spring back, nothing else
   };
@@ -1429,6 +1472,7 @@ function openSheet(kind, it, el) {
 }
 function queueDecision(it, body, label, ms = 4000) {
   if (pendingDec) commitDecision();          // one undo at a time: send the previous one now
+  ms = ms > 4000 ? Math.max(ms, prefs.undo * 2000) : prefs.undo * 1000;   // cautious cases keep at least double
   const timer = setTimeout(commitDecision, ms);
   pendingDec = { it, body, timer };
   deckTop = null; renderDeck();
@@ -1452,6 +1496,64 @@ addEventListener("pagehide", () => commitDecision());
 document.addEventListener("visibilitychange", () => { if (document.hidden) commitDecision(); });
 function openDetail(id) { deckMode = false; renderDeck(); select(id); }
 $("#cardsbtn").onclick = () => { deckMode = true; deckTop = null; renderDeck(); window.scrollTo(0, 0); };
+
+/* ---------- settings ---------- */
+const sw = (id, on) => `<label class="switch2"><input type="checkbox" id="${id}" ${on ? "checked" : ""}><span></span></label>`;
+const sel2 = (id, opts, val) => `<select id="${id}">${opts.map(([v, l]) => `<option value="${v}" ${String(v) === String(val) ? "selected" : ""}>${l}</option>`).join("")}</select>`;
+async function openSettings() {
+  document.body.classList.remove("qopen");
+  let srv = null;
+  try { srv = await (await fetch("/api/settings")).json(); } catch (e) {}
+  const m = document.createElement("div"); m.className = "modal settings";
+  const n = srv ? srv.notify : null;
+  m.innerHTML = `<div class="box">
+    <h3>Settings</h3>
+    <h4>Notifications (all devices)</h4>
+    ${srv ? `<div class="srow2"><div>Push new work to my phone<small id="s-notehint">${n.configured ? "Via ntfy. Sends the title and a link only." : "Add an ntfy topic below first."}</small></div>${sw("s-notify", n.enabled)}</div>
+      <div class="srow2" style="display:block"><div style="margin-bottom:6px">ntfy topic URL<small>Subscribe to the same topic in the ntfy app. Use a long random name: anyone who knows it can read it.</small></div>
+        <input type="text" id="s-topic" value="${esc(n.topic)}" placeholder="https://ntfy.sh/your-long-random-topic" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <div style="display:flex;gap:8px;margin-top:8px"><button class="sbtn" id="s-savetopic">Save topic</button><button class="sbtn" id="s-test">Send test</button></div></div>
+      <h4>Board (all devices)</h4>
+      <div class="srow2"><div>Flag changes as stale after<small>Items waiting on the agent this long are flagged, and the agent gets a reminder.</small></div>${sel2("s-stale", [[4, "4 hours"], [8, "8 hours"], [12, "12 hours"], [24, "1 day"], [48, "2 days"]], srv.stale_hours)}</div>
+      <div class="srow2"><div>Phone mode<small>${srv.phone_mode ? "On: phones on your Wi-Fi can open the board with the QR link." : "Off: only this computer can open the board."} Change it on the computer with <code>goodeye phone</code> or <code>goodeye phone --off</code>.</small></div><b style="color:${srv.phone_mode ? "var(--ok)" : "var(--text-muted)"}">${srv.phone_mode ? "On" : "Off"}</b></div>`
+      : `<div class="srow2">Could not load board settings.</div>`}
+    <h4>This device</h4>
+    <div class="srow2"><div>Vibration<small>Buzz on swipes and verdicts (Android; iPhone on iOS 18+).</small></div>${sw("p-haptics", prefs.haptics)}</div>
+    <div class="srow2"><div>Undo window<small>How long a verdict waits before it is sent. Risky ones wait twice as long.</small></div>${sel2("p-undo", [[3, "3 seconds"], [4, "4 seconds"], [6, "6 seconds"], [8, "8 seconds"]], prefs.undo)}</div>
+    <div class="srow2"><div>Swipe distance<small>How far a card must travel to count.</small></div>${sel2("p-swipe", [["normal", "Normal"], ["relaxed", "Longer (fewer accidents)"]], prefs.swipe)}</div>
+    <div class="srow2"><div>Phone opens to<small>Card stack or the full list and details.</small></div>${sel2("p-start", [["cards", "Cards"], ["list", "List and details"]], prefs.start)}</div>
+    <div class="srow2"><div>Theme</div>${sel2("p-theme", [["auto", "Match system"], ["dark", "Dark"], ["light", "Light"]], prefs.theme)}</div>
+    <div class="srow2"><div>Go to the next item after a verdict<small>Desktop and the list view.</small></div>${sw("p-advance", prefs.advance)}</div>
+    <div class="srow2"><div>Quick-reply chips<small>Your most-used notes as one-tap buttons.</small></div>${sw("p-chips", prefs.chips)}</div>
+    <div class="srow2"><div>Swipe tutorial<small>Show the first-run hint again.</small></div><button class="sbtn" id="p-coach">Show again</button></div>
+    <div class="smeta">GoodEye ${esc(srv ? srv.version : "")} · <a href="https://github.com/coreyonbreeze/goodeye" target="_blank" rel="noopener" style="color:inherit">github.com/coreyonbreeze/goodeye</a></div>
+    <div style="text-align:center;margin-top:14px"><button class="sbtn" id="s-close" style="padding:10px 28px">Done</button></div>
+  </div>`;
+  document.body.appendChild(m);
+  const $m = q => m.querySelector(q);
+  const post = async (body, okMsg) => {
+    const r = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { haptic("error"); toast(j.error || "Not saved"); return false; }
+    haptic("tick"); if (okMsg) toast(okMsg); return true;
+  };
+  if (srv) {
+    $m("#s-notify").onchange = e => post({ notify_enabled: e.target.checked }, e.target.checked ? "Notifications on" : "Notifications off");
+    $m("#s-savetopic").onclick = () => post({ ntfy: $m("#s-topic").value.trim(), notify_enabled: true }, "Topic saved").then(ok => { if (!ok) return; const has = !!$m("#s-topic").value.trim(); $m("#s-notify").checked = has;
+      $m("#s-notehint").textContent = has ? "Via ntfy. Sends the title and a link only." : "Add an ntfy topic below first."; });
+    $m("#s-test").onclick = () => post({ test_notify: true }, "Test sent");
+    $m("#s-stale").onchange = e => post({ stale_hours: +e.target.value }, "Saved");
+  }
+  const bind = (id, key, conv = v => v) => $m(id).onchange = e => { prefs[key] = e.target.type === "checkbox" ? e.target.checked : conv(e.target.value); savePrefs(); haptic("tick"); };
+  bind("#p-haptics", "haptics"); bind("#p-undo", "undo", Number); bind("#p-swipe", "swipe"); bind("#p-start", "start");
+  bind("#p-theme", "theme"); bind("#p-advance", "advance"); bind("#p-chips", "chips");
+  $m("#p-coach").onclick = () => { try { localStorage.removeItem("goodeye.coach"); } catch (e) {} toast("The hint shows on the next card"); deckTop = null; };
+  const close = () => { m.remove(); deckTop = null; renderDeck(); if (!isPhone() || !deckMode) { renderMain(); renderSide(); } };
+  $m("#s-close").onclick = close;
+  m.onclick = e => { if (e.target === m) close(); };
+}
+$("#gearbtn").onclick = openSettings;
+$("#gearbtn2").onclick = openSettings;
 
 /* ---------- phone: layout helpers, drawer, swipe, pairing ---------- */
 function isPhone() { return matchMedia("(max-width: 760px)").matches; }
