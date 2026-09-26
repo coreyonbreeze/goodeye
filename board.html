@@ -286,6 +286,7 @@ table.delta td { white-space: nowrap; text-align: right; padding: 4px; border-bo
   .modal .box svg { width: 70vw; height: 70vw; }
 }
 @media (max-width: 420px) { .opts { grid-template-columns: 1fr !important; } }
+
 #cardsbtn { display: none; }
 #zoomer { position: fixed; inset: 0; z-index: 80; background: #0b0b0b; touch-action: none; overflow: hidden; user-select: none; -webkit-user-select: none; }
 #zoomer[hidden] { display: none; }
@@ -429,6 +430,92 @@ table.delta td { white-space: nowrap; text-align: right; padding: 4px; border-bo
   .chips2 button { flex: none; padding: 6px 12px; font-size: 13px; }
   .checks { margin: 4px 12px 0; }
   .deckidle { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 10px; }
+}
+/* ---------- phone revamp: tokens ---------- */
+:root { --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --r-card: 22px; --r-btn: 14px;
+  --e-card: 0 18px 40px rgba(0,0,0,.45); --e-sheet: 0 -12px 40px rgba(0,0,0,.5);
+  --ease-out: cubic-bezier(.2,.8,.2,1); --ease-spring: cubic-bezier(.34,1.56,.64,1); --d-fast: 120ms; --d-base: 220ms;
+  --glass: rgba(20,20,19,.72); }
+:root[data-theme="light"] { --glass: rgba(252,252,251,.82); }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --glass: rgba(252,252,251,.82); } }
+@media (max-width: 760px) {
+  /* top bar: glass, borderless, readable agent state */
+  #topbar { background: var(--glass); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-bottom: 1px solid transparent; }
+  #topbar button { border: 0; background: transparent; }
+  #qbtn { font-size: 18px; }
+  .apill { font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+  .apill.on { color: var(--ok); } .apill.off { color: var(--text-muted); }
+  /* card */
+  .card2 { border-radius: var(--r-card); box-shadow: var(--e-card); }
+  .card2.snap { transition: transform .42s var(--ease-spring); }
+  .cmedia.ar { flex: 0 1 auto; aspect-ratio: var(--ar); max-height: 58%; min-height: 34%; flex-direction: column; gap: 8px; }
+  .cmedia.ar > img, .cmedia.ar > video, .cmedia.ar > canvas { max-height: 100%; }
+  .cmedia .crop { position: relative; width: 100%; aspect-ratio: var(--cr); overflow: hidden; border-radius: 8px; flex: none; }
+  .cmedia .crop img { position: absolute; left: 50%; top: 50%; width: 200%; max-width: none; max-height: none; transform: translate(-50%, -50%); border-radius: 0; }
+  .cmedia .crop .clab { position: absolute; right: 6px; top: 6px; background: rgba(0,0,0,.6); color: #fff; font-size: 10px; padding: 2px 7px; border-radius: 999px; z-index: 1; }
+  .cmedia.ar .main1 { flex: none; width: 100%; }
+  .card2 .cinfo { flex: 1; min-height: 0; }
+  .card2.behind { transition: transform var(--d-base) var(--ease-out), opacity var(--d-base); }
+  /* stamps lock at the commit line */
+  .stamp { transition: transform var(--d-fast) var(--ease-spring), border-width var(--d-fast); }
+  .stamp.yes.locked { transform: rotate(-12deg) scale(1.08); border-width: 5px; }
+  .stamp.no.locked { transform: rotate(12deg) scale(1.08); border-width: 5px; }
+  .stamp.later.locked { transform: translateX(-50%) scale(1.08); border-width: 5px; }
+  /* actions: two primary, two secondary; undo pill replaces them */
+  .actions { gap: 10px; justify-content: center; min-height: 76px; }
+  .act.yes, .act.no { width: 68px; height: 68px; border: 0; color: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+  .act.yes { background: var(--ok); } .act.no { background: var(--warn); color: #111; }
+  .act.yes i, .act.no i { font-size: 24px; }
+  .act.small { width: auto; height: 48px; border-radius: 999px; flex-direction: row; gap: 6px; padding: 0 16px; font-size: 14px; }
+  .act.small i { font-size: 16px; }
+  .act.no.pressing { transform: scale(.94); box-shadow: 0 0 0 6px rgba(226,85,85,.35); }
+  .upill { flex: 1; max-width: 460px; display: flex; align-items: center; gap: 10px; background: var(--surface-3); border: 1px solid var(--line);
+    border-radius: 999px; padding: 8px 8px 8px 16px; position: relative; overflow: hidden; font-size: 14px; animation: pillIn var(--d-base) var(--ease-out); }
+  .upill span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .upill button { background: var(--text-primary); color: var(--bg); border: 0; border-radius: 999px; padding: 10px 18px; font-weight: 700; font-size: 14px; }
+  .upill .bar2 { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--accent); animation: drain 4s linear forwards; }
+  @keyframes pillIn { from { opacity: 0; transform: translateY(8px) scale(.96); } to { opacity: 1; transform: none; } }
+  #undo { display: none !important; }
+  /* sheets: handle, drag to dismiss */
+  #sheet .panel { border-radius: 22px 22px 0 0; box-shadow: var(--e-sheet); max-height: 92dvh; overflow: auto; padding-top: 8px; transition: transform var(--d-base) var(--ease-out); }
+  #sheet .handle { width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 2px auto 8px; flex: none; }
+  #sheet .grab { touch-action: none; padding-bottom: 4px; }
+  #sheet .btn.rejectbtn { background: var(--bad); color: #fff; }
+  /* choices */
+  .copts { position: relative; padding-bottom: 44px; }
+  .chint { position: sticky; bottom: -44px; grid-column: 1 / -1; margin: 4px -10px -44px; padding: 10px 12px; background: var(--glass);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); font-size: 13px; text-align: center; color: var(--text-secondary); }
+  .copts.shake { animation: shake .36s var(--ease-out); }
+  @keyframes shake { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
+  /* note pins */
+  .pin { position: absolute; z-index: 3; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; background: var(--accent); color: #fff;
+    font-size: 13px; font-weight: 800; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 3px rgba(255,255,255,.85), 0 4px 10px rgba(0,0,0,.4); pointer-events: none;
+    animation: pinIn .28s var(--ease-spring); }
+  @keyframes pinIn { from { transform: scale(.2); opacity: 0; } to { transform: none; opacity: 1; } }
+  /* before/after slider */
+  .cmp { position: relative; width: 100%; height: 100%; }
+  .cmp > div { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .cmp img, .cmp video, .cmp canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .cmp .cmp-b { clip-path: inset(0 calc(100% - var(--pos, 50%)) 0 0); }
+  .cmp .cmp-h { position: absolute; top: 0; bottom: 0; left: var(--pos, 50%); width: 44px; margin-left: -22px; z-index: 3; touch-action: none; display: flex; justify-content: center; }
+  .cmp .cmp-h::before { content: ""; width: 3px; height: 100%; background: #fff; box-shadow: 0 0 6px rgba(0,0,0,.5); }
+  .cmp .cmp-h::after { content: "⇆"; position: absolute; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border-radius: 50%; background: #fff; color: #111;
+    display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+  .cmp .tag { position: absolute; top: 34px; z-index: 2; background: rgba(0,0,0,.6); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 999px; }
+  .cmp .tag.a { left: 10px; } .cmp .tag.b { right: 10px; }
+  /* session summary */
+  .sess { margin-top: 18px; font-size: 14px; color: var(--text-secondary); text-align: center; }
+  .sess b { color: var(--text-primary); }
+}
+@media (max-width: 760px) and (prefers-reduced-motion: reduce) {
+  .card2.snap, .card2.fly, .card2.behind, .stamp, .upill, .pin, #sheet .panel { transition-duration: 1ms !important; animation: none !important; }
+}
+@media (max-width: 760px) {
+  .cmedia.ar { padding-top: 18px; }
+  .card2 .cinfo { overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; }
+  .card2 .cinfo > * { flex-shrink: 0; }
+  .card2 .more { border-top: 1px solid var(--grid); margin-top: 6px; }
+  .card2 .more h4:first-child { margin-top: 10px; }
 }
 </style>
 </head>
@@ -1189,7 +1276,7 @@ const commitFrac = () => prefs.swipe === "relaxed" ? 0.38 : 0.28;
 /* ---------- haptics ----------
    Android: the Vibration API. iPhone (iOS 18+): Safari gives no vibration API, but toggling a native
    switch control plays the system haptic tick, so we click a hidden one. One tick per pulse. */
-const HAPTIC = { tick: [8], threshold: [14], approve: [12, 60, 22], changes: [30], reject: [45, 50, 45], later: [8], undo: [8, 40, 8], error: [20, 60, 20, 60, 20] };
+const HAPTIC = { tick: [8], threshold: [14], lock: [10, 30, 10], sheet: [6], approve: [12, 60, 22], changes: [30], reject: [45, 50, 45], later: [8], undo: [8, 40, 8], error: [20, 60, 20, 60, 20] };
 let hswitch = null;
 function haptic(kind) {
   if (!prefs.haptics) return;
@@ -1221,6 +1308,27 @@ const deckCards = () => {
   return [...open.filter(i => !skipped.includes(i.id)), ...skipped.map(id => open.find(i => i.id === id)).filter(Boolean)];
 };
 const deckNotes = {};
+const deckPins = {};                                            // item id -> [{x, y}] as fractions of the image
+const sess = { approved: 0, changes: 0, rejected: 0, start: 0 };
+function pinWhere(p) {
+  const v = p.y < .34 ? "top" : p.y > .66 ? "bottom" : "middle", h = p.x < .34 ? "left" : p.x > .66 ? "right" : "center";
+  return v === "middle" && h === "center" ? "center" : `${v} ${h}`;
+}
+function pinsHtml(it) { return (deckPins[it.id] || []).map((p, i) => `<span class="pin" data-pin="${i}" style="left:0;top:0">${i + 1}</span>`).join(""); }
+function placePins(el, it) {
+  const m = el.querySelector("[data-media]"); if (!m) return;
+  const img = m.querySelector(":scope > img, :scope > video, :scope > canvas, .main1 > img"); if (!img) return;
+  const mr = m.getBoundingClientRect(), r = img.getBoundingClientRect();
+  m.querySelectorAll(".pin").forEach(pin => { const p = (deckPins[it.id] || [])[+pin.dataset.pin]; if (!p) return;
+    pin.style.left = (r.left - mr.left + p.x * r.width) + "px"; pin.style.top = (r.top - mr.top + p.y * r.height) + "px"; });
+}
+function undoPill() {
+  return `<div class="upill"><span>${esc(pendingDec.label)}: ${esc(pendingDec.it.title)}</span><button id="undobtn">Undo</button><div class="bar2" style="animation-duration:${pendingDec.ms}ms"></div></div>`;
+}
+function wireUndo() {
+  const b = $("#undobtn"); if (!b) return;
+  b.onclick = () => { haptic("undo"); clearTimeout(pendingDec.timer); pendingDec = null; deckTop = null; renderDeck(); };
+}
 function renderDeck() {
   const on = isPhone() && deckMode;
   document.body.classList.toggle("deckmode", on);
@@ -1228,36 +1336,48 @@ function renderDeck() {
   if (!on || dragging) return;
   document.body.style.setProperty("--tbh", $("#topbar").offsetHeight + "px");
   const cards = deckCards();
-  $("#qpos").innerHTML = (agents.length ? `<span title="An agent is waiting" style="color:var(--ok)">●</span> ` : `<span title="No agent waiting" style="color:var(--text-muted)">○</span> `) + (cards.length ? `${cards.length} left` : "");
+  $("#qpos").innerHTML = agents.length ? `<span class="apill on">● Agent listening</span>` : `<span class="apill off">○ No agent</span>`;
   const top = cards[0];
   if (top && deckTop === top.id + "@" + top.versions[top.versions.length - 1].version && $("#deck .card2")) return;
   deckTop = top ? top.id + "@" + top.versions[top.versions.length - 1].version : null;
   if (!top) {
-    $("#deck").innerHTML = `<div class="deckidle">${idleHtml().replace('class="idle"', 'class="idle" style="padding:0"')}</div>`;
+    const n = sess.approved + sess.changes + sess.rejected;
+    const mins = sess.start ? Math.max(1, Math.round((Date.now() - sess.start) / 60000)) : 0;
+    $("#deck").innerHTML = `<div class="deckidle">${idleHtml().replace('class="idle"', 'class="idle" style="padding:0"')}
+      ${n ? `<div class="sess"><b>${n} reviewed</b> · ${sess.approved} approved · ${sess.changes} changes${sess.rejected ? ` · ${sess.rejected} rejected` : ""} · ${mins} min</div>` : ""}</div>
+      <div class="actions">${pendingDec ? undoPill() : ""}</div>`;
     $("#deck").querySelectorAll(".row[data-id]").forEach(r => r.onclick = () => openDetail(r.dataset.id));
+    wireUndo();
     return;
   }
   const note = deckNotes[top.id] || "";
   $("#deck").innerHTML = `<div class="stack">${cards[1] ? cardHtml(cards[1], true) : ""}${cardHtml(top, false)}</div>
     ${note ? `<div class="notechip">Note: ${esc(note)}</div>` : ""}
-    <div class="actions">
-      <button class="act no" data-act="changes"><i>✎</i>Changes</button>
-      <button class="act small" data-act="notes"><i>✎</i>Notes</button>
+    <div class="actions">${pendingDec ? undoPill() : `
+      <button class="act no" data-act="changes" aria-label="Request changes (hold to reject)"><i>✎</i></button>
       <button class="act small" data-act="later"><i>↑</i>Later</button>
-      <button class="act yes" data-act="approve"><i>✓</i>${top.versions[top.versions.length - 1].kind === "choice" ? "Go" : "Approve"}</button>
+      <button class="act small" data-act="notes"><i>✎</i>Note</button>
+      <button class="act yes" data-act="approve" aria-label="Approve"><i>✓</i></button>`}
     </div>`;
   const el = $("#deck .card2:not(.behind)");
   wireCard(el, top);
-  $("#deck").querySelectorAll("[data-act]").forEach(b => b.onclick = () => act(b.dataset.act, top, el));
+  $("#deck").querySelectorAll("[data-act]").forEach(b => b.onclick = () => { if (b._long) { b._long = false; return; } act(b.dataset.act, top, el); });
+  const ch = $("#deck [data-act=changes]");
+  if (ch) {                                                        // hold Changes to reject
+    let t = null;
+    ch.onpointerdown = () => { ch.classList.add("pressing"); t = setTimeout(() => { ch._long = true; ch.classList.remove("pressing"); haptic("reject"); openSheet("reject", top, el); }, 600); };
+    ch.onpointerup = ch.onpointerleave = ch.onpointercancel = () => { clearTimeout(t); ch.classList.remove("pressing"); };
+  }
+  wireUndo();
   el.querySelector(".det").onclick = e => { e.stopPropagation(); openDetail(top.id); };
   const zb = el.querySelector(".zoombtn"); if (zb) zb.onclick = e => { e.stopPropagation(); openZoom(el.querySelector("[data-media]")); };
   startDeckGifs(el);
-  fitCard(el);
-  el.querySelectorAll("img").forEach(i => i.addEventListener("load", () => fitCard(el), { once: true }));
+  fitCard(el); placePins(el, top);
+  el.querySelectorAll("img").forEach(i => i.addEventListener("load", () => { fitCard(el); placePins(el, top); }, { once: true }));
   let seen = false; try { seen = localStorage.getItem("goodeye.coach") === "1"; } catch (e) {}
   if (!seen) {
     el.insertAdjacentHTML("beforeend", `<div class="coach"><div><b class="g">Swipe →</b> Approve</div><div><b class="a">← Swipe</b> Request changes (you say what)</div>
-      <div><b>Swipe ↑</b> Later</div><div><b>Tap image</b> See it in context</div><div style="font-size:13px;opacity:.8">Every verdict can be undone for a few seconds.</div><button>Got it</button></div>`);
+      <div><b>Swipe ↑</b> Later</div><div><b>Tap image</b> Previous version and mockups</div><div><b>Hold image</b> Drop a pin for a note</div><div><b>Hold ✎</b> Reject</div><div style="font-size:13px;opacity:.8">Every verdict can be undone for a few seconds.</div><button>Got it</button></div>`);
     el.querySelector(".coach button").onclick = e => { e.stopPropagation(); try { localStorage.setItem("goodeye.coach", "1"); } catch (x) {} el.querySelector(".coach").remove(); haptic("tick"); };
   }
 }
@@ -1285,12 +1405,24 @@ document.addEventListener("pointerup", e => {                     // tap on expa
   const top = deckCards()[0];
   if (moved < 8 && top && !e.target.closest("button, a")) toggleInfo(top);
 });
-function toggleInfo(it) { expanded[it.id] = !expanded[it.id]; haptic("tick"); deckTop = null; renderDeck(); }
+function patchCard(it, parts) {
+  // Rebuild only the named parts of the top card, so the stack, GIFs and video keep playing.
+  const el = $("#deck .card2:not(.behind)"); if (!el) return;
+  const t = document.createElement("div"); t.innerHTML = cardHtml(it, false);
+  const fresh = t.firstElementChild;
+  el.classList.toggle("expanded", fresh.classList.contains("expanded"));
+  parts.forEach(sel => { const a = el.querySelector(sel), b = fresh.querySelector(sel); if (a && b) a.replaceWith(b); });
+  const zb = el.querySelector(".zoombtn"); if (zb) zb.onclick = e => { e.stopPropagation(); openZoom(el.querySelector("[data-media]")); };
+  const det = el.querySelector(".det"); if (det) det.onclick = e => { e.stopPropagation(); openDetail(it.id); };
+  startDeckGifs(el); fitCard(el); placePins(el, it);
+  el.querySelectorAll("img").forEach(i => i.addEventListener("load", () => { fitCard(el); placePins(el, it); }, { once: true }));
+}
+function toggleInfo(it) { expanded[it.id] = !expanded[it.id]; haptic("tick"); patchCard(it, [".cinfo"]); }
 function pageFrame(it, dir) {
   const n = cardFrames(it).length;
   if (n < 2) return;
   const i = ((frameIdx[it.id] || 0) + dir + n) % n;              // carousel: wraps both ways
-  frameIdx[it.id] = i; haptic(i === 0 && dir > 0 ? "undo" : "tick"); deckTop = null; renderDeck();
+  frameIdx[it.id] = i; haptic(i === 0 && dir > 0 ? "undo" : "tick"); patchCard(it, ["[data-media]"]);
 }
 function cardHtml(it, behind) {
   const v = it.versions[it.versions.length - 1], r = v.reasoning || {}, j = v.judge;
@@ -1300,22 +1432,27 @@ function cardHtml(it, behind) {
   const closing = toCloseFor(it).length;
   const frames = cardFrames(it), fi = Math.min(frameIdx[it.id] || 0, frames.length - 1), f = frames[fi];
   const [fctx, fpart] = String(f).split("|");
-  const inner = f === "asset" ? deckMedia(v) : f === "prev" ? deckMedia(prev) : `<div class="cfit"><div>${mockupPart(fctx, v, fpart)}</div></div>`;
+  const W = +(v.media?.width || 0), H = +(v.media?.height || 0), ar = W && H ? W / H : 16 / 9;
+  const crop = f === "asset" && v.kind === "image" && ar > 2.4;       // wide line art: add a 2x center crop so it reads without zoom
+  const inner = f === "asset" ? (crop ? `<div class="main1">${deckMedia(v)}</div><div class="crop" style="--cr:${(ar / 2).toFixed(3)}"><span class="clab">Center, 2×</span>${deckMedia(v)}</div>` : deckMedia(v))
+    : f === "prev" ? `<div class="cmp"><div class="cmp-a">${deckMedia(v)}</div><div class="cmp-b">${deckMedia(prev)}</div><span class="tag a">${esc(prev.version)}</span><span class="tag b">${esc(v.version)}</span><div class="cmp-h" aria-label="Drag to compare"></div></div>`
+    : `<div class="cfit"><div>${mockupPart(fctx, v, fpart)}</div></div>`;
+  const arStyle = f === "asset" ? `--ar:${(crop ? ar / 3 : ar).toFixed(3)}` : "";
   const flabel = f === "asset" ? (frames.length > 1 ? `${esc(v.version)} · tap › for ${frames[1] === "prev" ? "the previous version" : "mockups"}` : "")
-    : f === "prev" ? `Previous: ${esc(prev.version)} · compare` : "In context: " + esc(CTX[fctx] || fctx) + (fpart ? ` · ${fpart}` : "");
-  const body = v.kind === "choice" ? choiceGrid(v) : `<div class="cmedia" data-media>${frames.length > 1 ? `<div class="frames">${frames.map((_, i) => `<i class="${i === fi ? "on" : ""}"></i>`).join("")}</div>
-    <div class="flabel">${flabel}</div><span class="nav l">‹</span><span class="nav r">›</span>` : ""}<button class="zoombtn" aria-label="Zoom">🔍</button>${inner}</div>`;
+    : f === "prev" ? `Drag ⇆ to compare ${esc(prev.version)} and ${esc(v.version)}` : "In context: " + esc(CTX[fctx] || fctx) + (fpart ? ` · ${fpart}` : "");
+  const body = v.kind === "choice" ? choiceGrid(v) : `<div class="cmedia ${f === "asset" ? "ar" : ""}" style="${arStyle}" data-media>${frames.length > 1 ? `<div class="frames">${frames.map((_, i) => `<i class="${i === fi ? "on" : ""}"></i>`).join("")}</div>
+    <div class="flabel">${flabel}</div><span class="nav l">‹</span><span class="nav r">›</span>` : ""}<button class="zoombtn" aria-label="Zoom">🔍</button>${inner}${f === "asset" ? pinsHtml(it) : ""}</div>`;
   const exp = expanded[it.id];
   const scoreRows = Object.entries(v.scores || {}).map(([k, x]) => { const pv = prev?.scores?.[k]?.value, pct = (x.max || 0) <= 1 && x.value <= 1;
     const f = n => pct ? Math.round(n * 100) + "%" : (+n).toFixed(2);
     return `<div class="srow"><span>${esc(k)}</span><b class="${x.bar != null && x.value < x.bar ? "down" : ""}">${f(x.value)}</b>${pv != null ? `<span class="${x.value >= pv ? "up" : "down"}">${x.value >= pv ? "▲" : "▼"}${pct ? Math.round(Math.abs(x.value - pv) * 100) + " pts" : Math.abs(x.value - pv).toFixed(2)}</span>` : "<span></span>"}<span class="bar3">${x.bar != null ? "bar " + f(x.bar) : ""}</span></div>`; }).join("");
-  const more = exp ? `<div class="more">
+  const more = !behind ? `<div class="more">
       ${(r.changes || []).length ? `<h4>What changed</h4><ol>${r.changes.map(c => `<li>${esc(c.change)}<div class="why">${esc(c.why)}</div>${c.feedback ? `<q>${esc(c.feedback)}</q>` : ""}</li>`).join("")}</ol>` : ""}
       ${(r.decisions || []).length ? `<h4>Decisions and why</h4><ol>${r.decisions.map(d => `<li>${esc(d.choice)}<div class="why">${esc(d.why)}</div></li>`).join("")}</ol>` : ""}
       ${(r.open_questions || []).length ? `<h4>Questions for you</h4><ol>${r.open_questions.map(x => `<li>${esc(x)}</li>`).join("")}</ol>` : ""}
       ${scoreRows ? `<h4>Scores${prev ? ` vs ${esc(prev.version)}` : ""}</h4>${scoreRows}` : ""}
       ${j && (j.notes || []).length ? `<h4>${esc(j.name || "Judge")} notes</h4><ul>${j.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
-    </div>` : `<div class="tapmore">Tap for reasoning and scores ▾</div>`;
+    </div>` : "";
   return `<div class="card2 ${behind ? "behind" : ""} ${exp ? "expanded" : ""}">
     <div class="stamp yes">APPROVE</div><div class="stamp no">CHANGES</div><div class="stamp later">LATER</div>
     ${body}
@@ -1342,7 +1479,8 @@ function choiceGrid(v) {
   const d = draftOf(v);
   return `<div class="copts">${v.options.map((o, i) => { const r = d.ranking.indexOf(o.key); const a = optAsset(v, o);
     return `<div class="copt ${r === 0 ? "r1" : r === 1 ? "r2" : ""}" data-opt="${esc(o.key)}">${deckMedia(a)}${r >= 0 ? `<span class="rk">${["1st", "2nd", "3rd"][r] || r + 1 + "th"}</span>` : ""}
-      <div class="lab"><span>${esc(o.label)}${v.recommended === o.key ? " ★" : ""}</span><span class="num">${i + 1}</span></div></div>`; }).join("")}</div>`;
+      <div class="lab"><span>${esc(o.label)}${v.recommended === o.key ? " ★" : ""}</span><span class="num">${i + 1}</span></div></div>`; }).join("")}
+    <div class="chint">${d.ranking.length ? d.ranking.map((k, i) => `${["1st", "2nd", "3rd"][i] || i + 1 + "th"}: <b>${esc((v.options.find(o => o.key === k) || {}).label || k)}</b>`).join(" · ") : "Tap options to rank. Swipe right to go with your 1st."}</div></div>`;
 }
 function toggleRankDeck(v, key) {
   haptic("tick");
@@ -1366,36 +1504,73 @@ function startDeckGifs(root) {
   }
 }
 function wireCard(el, it) {
-  let sx = 0, sy = 0, dx = 0, dy = 0, pid = null, t0 = 0, moved = 0;
+  let sx = 0, sy = 0, dx = 0, dy = 0, pid = null, t0 = 0, moved = 0, samples = [], press = null, pinned = false, cmp = null;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const behind = el.parentElement.querySelector(".card2.behind");
   // iOS: stop Safari from claiming the gesture (it would cancel our drag) while a finger is on the card.
-  el.addEventListener("touchmove", e => { if (pid !== null) e.preventDefault(); }, { passive: false });
+  el.addEventListener("touchmove", e => {
+    if (cmp) return e.preventDefault();
+    if (pid === null) return;
+    const t = e.touches[0], inInfo = e.target.closest && e.target.closest(".cinfo");
+    if (!inInfo || Math.abs(t.clientX - sx) > Math.abs(t.clientY - sy)) e.preventDefault();   // details scroll vertically; everything else swipes
+  }, { passive: false });
   const stamps = { yes: el.querySelector(".stamp.yes"), no: el.querySelector(".stamp.no"), later: el.querySelector(".stamp.later") };
   let zone = null;
   const paint = () => {
     const w = innerWidth, f = commitFrac(), z = dx > w * f ? "yes" : dx < -w * f ? "no" : (dy < -140 && Math.abs(dx) < 80) ? "later" : null;
-    if (z !== zone) { if (z) haptic("threshold"); zone = z; }      // a tick when the swipe crosses the line that commits it
-    el.style.transform = `translate(${dx}px, ${dy}px) rotate(${dx * 0.06}deg)`;
+    if (z !== zone) {                                                 // the stamp locks with a tick when the swipe will commit
+      Object.values(stamps).forEach(st => st.classList.remove("locked"));
+      if (z) { stamps[z].classList.add("locked"); haptic("lock"); }
+      zone = z;
+    }
+    el.style.transform = `translate(${dx}px, ${dy}px) rotate(${reduce ? 0 : dx * 0.06}deg)`;
     stamps.yes.style.opacity = Math.max(0, Math.min(1, dx / 110));
     stamps.no.style.opacity = Math.max(0, Math.min(1, -dx / 110));
     stamps.later.style.opacity = Math.abs(dx) < 60 ? Math.max(0, Math.min(1, -dy / 120)) : 0;
+    if (behind) {                                                     // the next card rises as this one leaves
+      const p = Math.min(1, Math.max(Math.abs(dx) / (w * f), -dy / 140, 0));
+      behind.style.transform = `scale(${.94 + .06 * p}) translateY(${14 - 14 * p}px)`;
+      behind.style.opacity = .6 + .4 * p;
+    }
   };
+  const inMedia = (x, y) => { const m = el.querySelector("[data-media]"), r = m && m.getBoundingClientRect(); return r && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; };
   el.addEventListener("pointerdown", e => {
     if (pid !== null && e.pointerId !== pid && e.target.closest("[data-media]")) {   // a second finger: pinch means zoom, not swipe
-      const keep = pid; pid = null; dragging = false; snapHome(); try { el.releasePointerCapture(keep); } catch (x) {}
+      const keep = pid; pid = null; dragging = false; clearTimeout(press); snapHome(); try { el.releasePointerCapture(keep); } catch (x) {}
       return openZoom(el.querySelector("[data-media]"));
+    }
+    if (e.target.closest(".cmp-h")) {                                 // compare slider handle
+      cmp = { id: e.pointerId, box: el.querySelector(".cmp") }; el.setPointerCapture(e.pointerId); return;
     }
     if (e.target.closest(".zoombtn")) return;
     if (e.target.closest("button, .coach") || e.target.closest(".card2.expanded .cinfo")) {
       if (e.target.closest(".card2.expanded .cinfo") && !e.target.closest("button")) infoTapStart = { x: e.clientX, y: e.clientY };
       return;
     }
-    pid = e.pointerId; sx = e.clientX; sy = e.clientY; dx = dy = 0; moved = 0; t0 = performance.now(); dragging = true;
+    pid = e.pointerId; sx = e.clientX; sy = e.clientY; dx = dy = 0; moved = 0; t0 = performance.now(); dragging = true; pinned = false;
+    samples = [{ t: t0, x: sx, y: sy }];
     el.classList.remove("snap"); el.setPointerCapture(pid);
+    clearTimeout(press);
+    if (inMedia(sx, sy) && (frameIdx[it.id] || 0) === 0 && it.versions[it.versions.length - 1].kind !== "choice") {
+      press = setTimeout(() => {                                      // long-press drops a numbered pin on the image
+        if (moved > 8 || pid === null) return;
+        const img = el.querySelector("[data-media] > img, [data-media] > video, [data-media] > canvas, [data-media] .main1 > img");
+        const r = img && img.getBoundingClientRect();
+        if (!r || sx < r.left || sx > r.right || sy < r.top || sy > r.bottom) return;
+        (deckPins[it.id] ||= []).push({ x: (sx - r.left) / r.width, y: (sy - r.top) / r.height });
+        pinned = true; haptic("lock"); patchCard(it, ["[data-media]"]);
+      }, 480);
+    }
   });
   el.addEventListener("pointermove", e => {
-    if (e.pointerId !== pid) return;
+    if (cmp && e.pointerId === cmp.id) {
+      const r = cmp.box.getBoundingClientRect();
+      cmp.box.style.setProperty("--pos", Math.max(0, Math.min(100, (e.clientX - r.left) / r.width * 100)) + "%"); return;
+    }
+    if (e.pointerId !== pid || pinned) return;
     dx = e.clientX - sx; dy = Math.min(0, e.clientY - sy) + Math.max(0, e.clientY - sy) * 0.2;
     moved = Math.max(moved, Math.hypot(dx, e.clientY - sy));          // furthest the finger got, so a drag back to center is not a tap
+    samples.push({ t: performance.now(), x: e.clientX, y: e.clientY }); if (samples.length > 6) samples.shift();
     paint();
   });
   const snapHome = () => {
@@ -1403,44 +1578,60 @@ function wireCard(el, it) {
     el.addEventListener("transitionend", () => el.classList.remove("snap"), { once: true });
   };
   const end = e => {
+    if (cmp && e.pointerId === cmp.id) { cmp = null; haptic("tick"); return; }
     if (e.pointerId !== pid) return;
-    pid = null; dragging = false;
+    pid = null; dragging = false; clearTimeout(press);
     const w = innerWidth;
     if (e.type === "pointercancel") return snapHome();              // the browser took the gesture: never a tap, never a verdict
+    if (pinned) {                                                    // finger lifted after dropping a pin: write the note (a real gesture, so iOS raises the keyboard)
+      const n = deckPins[it.id].length, p = deckPins[it.id][n - 1];
+      return openSheet("notes", it, el, `At pin ${n} (${pinWhere(p)}): `);
+    }
     if (moved < 8 && performance.now() - t0 < 350) {                 // a tap: short and still
       const hit = [...el.querySelectorAll("[data-opt]")].find(o => { const b = o.getBoundingClientRect(); return e.clientX >= b.left && e.clientX <= b.right && e.clientY >= b.top && e.clientY <= b.bottom; });
       if (hit) { toggleRankDeck(it.versions[it.versions.length - 1], hit.dataset.opt); return; }
-      const m = el.querySelector("[data-media]"), r = m && m.getBoundingClientRect();   // pointer capture retargets to the card
-      if (r && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) pageFrame(it, e.clientX - r.left < r.width * 0.35 ? -1 : 1);
+      if (inMedia(e.clientX, e.clientY)) { const r = el.querySelector("[data-media]").getBoundingClientRect(); pageFrame(it, e.clientX - r.left < r.width * 0.35 ? -1 : 1); }
       else if (el.querySelector(".cinfo").getBoundingClientRect().top <= e.clientY) toggleInfo(it);
       return;
     }
-    if (dx > w * commitFrac()) act("approve", it, el, dx, dy);
-    else if (dx < -w * commitFrac()) act("changes", it, el, dx, dy);
+    // velocity over the last ~100 ms: a quick flick commits even if it did not travel far
+    const s0 = samples.find(q => performance.now() - q.t < 110) || samples[0], s1 = samples[samples.length - 1];
+    const vx = s1 && s0 && s1.t > s0.t ? (s1.x - s0.x) / (s1.t - s0.t) : 0;
+    const flickMin = prefs.swipe === "relaxed" ? 90 : 60;
+    if (dx > w * commitFrac() || (vx > .5 && dx > flickMin)) act("approve", it, el, dx, dy, false, vx);
+    else if (dx < -w * commitFrac() || (vx < -.5 && dx < -flickMin)) act("changes", it, el, dx, dy);
     else if (dy < -140 && Math.abs(dx) < 80) act("later", it, el, dx, dy);
     else snapHome();                                                 // not far enough: spring back, nothing else
   };
   el.addEventListener("pointerup", end);
   el.addEventListener("pointercancel", end);
 }
-function flyOut(el, dir, then) {
+function flyOut(el, dir, then, vx = 0) {
   if (!el) return then();
-  el.classList.add("fly");
+  const ms = Math.round(Math.max(180, Math.min(320, 320 - Math.abs(vx) * 60)));
+  el.style.transition = `transform ${ms}ms var(--ease-out), opacity ${ms}ms`;
+  const behind = el.parentElement && el.parentElement.querySelector(".card2.behind");
+  if (behind) { behind.style.transform = "none"; behind.style.opacity = "1"; }
   const w = innerWidth * 1.4;
-  el.style.transform = dir === "up" ? "translate(0, -120vh)" : `translate(${dir === "right" ? w : -w}px, 40px) rotate(${dir === "right" ? 24 : -24}deg)`;
+  el.style.transform = dir === "up" ? "translate(0, -120vh)" : `translate(${dir === "right" ? w : -w}px, 60px) rotate(${dir === "right" ? 24 : -24}deg)`;
   el.style.opacity = "0";
-  setTimeout(then, 240);
+  setTimeout(then, ms - 20);
 }
 function snapBack(el) { if (!el) return; el.classList.remove("fly"); el.classList.add("snap"); el.style.transform = ""; el.style.opacity = "";
   el.querySelectorAll(".stamp").forEach(s => s.style.opacity = 0); }
-function act(kind, it, el, _dx, _dy, slotOk) {
+function act(kind, it, el, _dx, _dy, slotOk, vx = 0) {
   if (slotOk) confirmedSlot = true;
   const v = it.versions[it.versions.length - 1];
   if (kind === "later") { haptic("later"); flyOut(el, "up", () => { skipped = skipped.filter(x => x !== it.id).concat(it.id); deckTop = null; renderDeck(); }); return; }
   if (kind === "notes") return openSheet("notes", it, el);
+  if (kind === "reject") return openSheet("reject", it, el);
   if (kind === "changes") { snapBack(el); return openSheet("changes", it, el); }
   // approve
-  if (v.kind === "choice" && !draftOf(v).ranking.length) { snapBack(el); toast("Tap an option to pick it first"); haptic("error"); return; }
+  if (v.kind === "choice" && !draftOf(v).ranking.length) {        // never leave the screen with nothing picked
+    snapBack(el); haptic("error");
+    const g = el && el.querySelector(".copts"); if (g) { g.classList.remove("shake"); void g.offsetWidth; g.classList.add("shake"); }
+    return;
+  }
   const note = deckNotes[it.id] || "";
   const body = { id: it.id, version: v.version, verdict: v.kind === "choice" ? "picked" : "approved", feedback: note };
   if (v.kind === "choice") { const d = draftOf(v); body.ranking = d.ranking.map(k => ({ key: k, note: d.notes[k] || "" })); body.option_notes = []; }
@@ -1448,68 +1639,102 @@ function act(kind, it, el, _dx, _dy, slotOk) {
   const below = v.judge && v.judge.pass === false;
   const label = `${note ? "Approved with notes" : v.kind === "choice" ? "Picked" : "Approved"}${closing.length ? ` · closed ${closing.length}` : ""}${below ? " · judge said below bar" : ""}`;
   if (closing.length && !confirmedSlot) { snapBack(el); return confirmSlot(it, closing, () => act("approve", it, el, 0, 0, true)); }
-  flyOut(el, "right", () => queueDecision(it, body, label, below || closing.length ? 8000 : 4000));   // longer undo when it closes others or the judge objected
+  flyOut(el, "right", () => queueDecision(it, body, label, below || closing.length ? 8000 : 4000), vx);   // longer undo when it closes others or the judge objected
 }
 let confirmedSlot = false;
+function showSheet(inner, onClose) {
+  // One bottom sheet: drag handle, drag down or tap outside to close, stays above the iOS keyboard.
+  const sh = $("#sheet");
+  sh.innerHTML = `<div class="panel"><div class="grab"><div class="handle"></div></div>${inner}</div>`;
+  sh.hidden = false; haptic("sheet");
+  const panel = sh.querySelector(".panel"), grab = sh.querySelector(".grab");
+  const vv = window.visualViewport;
+  const lift = () => { sh.style.paddingBottom = vv ? Math.max(0, innerHeight - vv.height - vv.offsetTop) + "px" : ""; };
+  if (vv) { vv.addEventListener("resize", lift); vv.addEventListener("scroll", lift); }
+  const close = () => {
+    if (sh.hidden) return;
+    if (vv) { vv.removeEventListener("resize", lift); vv.removeEventListener("scroll", lift); }
+    sh.hidden = true; sh.style.paddingBottom = ""; panel.style.transform = "";
+    if (onClose) onClose();
+  };
+  const opened = performance.now();
+  sh.onclick = e => { if (e.target === sh && performance.now() - opened > 350) close(); };   // ignore the click that follows the opening tap
+  let y0 = null;
+  grab.onpointerdown = e => { y0 = e.clientY; grab.setPointerCapture(e.pointerId); panel.style.transition = "none"; };
+  grab.onpointermove = e => { if (y0 !== null) panel.style.transform = `translateY(${Math.max(0, e.clientY - y0)}px)`; };
+  grab.onpointerup = grab.onpointercancel = e => {
+    if (y0 === null) return;
+    const d = e.clientY - y0; y0 = null; panel.style.transition = "";
+    if (d > 80) close(); else panel.style.transform = "";
+  };
+  return { panel, close };
+}
 function confirmSlot(it, closing, go) {
   haptic("threshold");
-  $("#sheet").innerHTML = `<div class="panel"><h3>Approve for ${esc(it.slot.label)}?</h3>
+  const { panel, close } = showSheet(`<h3>Approve for ${esc(it.slot.label)}?</h3>
     <div class="hint">One asset fills this slot. Approving <b>${esc(it.title)}</b> closes ${closing.length === 1 ? "this one" : `these ${closing.length}`} as not chosen, and the agent stops work on ${closing.length === 1 ? "it" : "them"}:</div>
     <div class="closing">${closing.map(c => `<div>${thumbOf(c)}${esc(c.title)}<br>${STATUS[c.status]}</div>`).join("")}</div>
-    <div class="row2"><button class="btn" data-s="cancel" style="background:var(--surface-3)">Cancel</button><button class="btn approve" data-s="ok">Approve, close ${closing.length}</button></div></div>`;
-  $("#sheet").hidden = false;
-  $("#sheet").onclick = e => { if (e.target.id === "sheet") { $("#sheet").hidden = true; } };
-  $("#sheet").querySelector("[data-s=cancel]").onclick = () => { $("#sheet").hidden = true; };
-  $("#sheet").querySelector("[data-s=ok]").onclick = () => { $("#sheet").hidden = true; confirmedSlot = true; try { go(); } finally { confirmedSlot = false; } };
+    <div class="row2"><button class="btn" data-s="cancel" style="background:var(--surface-3)">Cancel</button><button class="btn approve" data-s="ok">Approve, close ${closing.length}</button></div>`);
+  panel.querySelector("[data-s=cancel]").onclick = close;
+  panel.querySelector("[data-s=ok]").onclick = () => { close(); confirmedSlot = true; try { go(); } finally { confirmedSlot = false; } };
 }
-function openSheet(kind, it, el) {
+function openSheet(kind, it, el, prefix = "") {
   const v = it.versions[it.versions.length - 1];
-  const title = kind === "notes" ? "Notes for the agent" : "What should change?";
-  $("#sheet").innerHTML = `<div class="panel">
-    <h3>${title}</h3><div class="hint">${kind === "notes" ? "Tap the mic on your keyboard to dictate. Then Approve: the agent applies these notes without sending it back." : "Tap the mic on your keyboard to dictate. The agent makes a new version and it comes back to you."}</div>
-    ${chipsHtml()}
-    <textarea id="sheetfb" placeholder="${kind === "notes" ? "e.g. nudge the logo left" : "e.g. the headline is too small on mobile"}">${esc(deckNotes[it.id] || "")}</textarea>
+  const T = {
+    notes: ["Note for the agent", "Type or dictate. The agent applies this when you approve, and does not send it back.", "e.g. nudge the logo left"],
+    changes: ["What should change?", "Type or dictate. The agent makes a new version and sends it back to you.", "e.g. the headline is too small on mobile"],
+    reject: ["Reject this?", "The agent stops work on it. Say why if it helps the next asset.", "Optional: why"],
+  }[kind];
+  if (prefix) deckNotes[it.id] = (deckNotes[it.id] ? deckNotes[it.id].replace(/\s*$/, "\n") : "") + prefix;
+  const { panel, close } = showSheet(`<h3>${T[0]}</h3><div class="hint">${T[1]}</div>
+    ${kind === "reject" ? "" : chipsHtml()}
+    <textarea id="sheetfb" placeholder="${T[2]}">${esc(kind === "reject" ? "" : deckNotes[it.id] || "")}</textarea>
     <div class="row2">${kind === "notes"
-      ? `<button class="btn" data-s="cancel" style="background:var(--surface-3)">Done</button><button class="btn approve" data-s="approve">Approve with notes</button>`
+      ? `<button class="btn" data-s="cancel" style="background:var(--surface-3)">Done</button><button class="btn approve" data-s="approve">Approve with note</button>`
+      : kind === "reject"
+      ? `<button class="btn" data-s="cancel" style="background:var(--surface-3)">Cancel</button><button class="btn rejectbtn" data-s="reject">Reject</button>`
       : `<button class="btn" data-s="cancel" style="background:var(--surface-3)">Cancel</button><button class="btn changes" data-s="send">Send changes</button>`}</div>
-    ${kind === "changes" ? `<button class="link" data-s="reject">Reject instead (stop work on it)</button>` : ""}</div>`;
-  $("#sheet").hidden = false;
-  const ta = $("#sheetfb"); wireChips($("#sheet"), ta); setTimeout(() => ta.focus(), 50);
-  const close = () => { deckNotes[it.id] = kind === "notes" ? ta.value : deckNotes[it.id]; $("#sheet").hidden = true; deckTop = null; renderDeck(); };
-  $("#sheet").onclick = e => { if (e.target.id === "sheet") close(); };
-  $("#sheet").querySelectorAll("[data-s]").forEach(b => b.onclick = () => {
+    ${kind === "changes" ? `<button class="link" data-s="reject">Reject instead (stop work on it)</button>` : ""}`,
+    () => { if (kind === "notes") deckNotes[it.id] = ta.value; patchCard(it, ["[data-media]"]); renderDeckNote(it); });
+  const ta = panel.querySelector("#sheetfb"); wireChips(panel, ta);
+  ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);          // inside the user's tap, so iOS raises the keyboard
+  panel.querySelectorAll("[data-s]").forEach(b => b.onclick = () => {
     const s = b.dataset.s, text = ta.value.trim();
     if (s === "cancel") return close();
-    if (s === "approve") { deckNotes[it.id] = ta.value; $("#sheet").hidden = true; return act("approve", it, $("#deck .card2:not(.behind)")); }
+    if (s === "approve") { deckNotes[it.id] = ta.value; close(); return act("approve", it, $("#deck .card2:not(.behind)")); }
     if (s === "send" && !text) { ta.focus(); haptic("error"); toast("Say what to change"); return; }
-    $("#sheet").hidden = true;
+    close();
     const verdict = s === "reject" ? "rejected" : "changes";
     const body = { id: it.id, version: v.version, verdict, feedback: ta.value };
     if (v.kind === "choice") { const d = draftOf(v); body.ranking = d.ranking.map(k => ({ key: k, note: d.notes[k] || "" })); body.option_notes = []; }
     flyOut($("#deck .card2:not(.behind)"), "left", () => queueDecision(it, body, verdict === "rejected" ? "Rejected" : "Changes requested"));
   });
 }
+function renderDeckNote(it) {
+  const chip = $("#deck .notechip"), note = deckNotes[it.id] || "";
+  if (chip && !note) chip.remove();
+  else if (note) { if (chip) chip.textContent = "Note: " + note; else $("#deck .stack").insertAdjacentHTML("afterend", `<div class="notechip">Note: ${esc(note)}</div>`); }
+}
 function queueDecision(it, body, label, ms = 4000) {
   if (pendingDec) commitDecision();          // one undo at a time: send the previous one now
   ms = ms > 4000 ? Math.max(ms, prefs.undo * 2000) : prefs.undo * 1000;   // cautious cases keep at least double
   const timer = setTimeout(commitDecision, ms);
-  pendingDec = { it, body, timer };
+  pendingDec = { it, body, timer, label, ms };
   deckTop = null; renderDeck();
   haptic(body.verdict === "rejected" ? "reject" : body.verdict === "changes" ? "changes" : "approve");
-  $("#undo").innerHTML = `<span>${esc(label)}: ${esc(it.title)}</span><button id="undobtn">Undo</button><div class="bar2" style="animation-duration:${ms}ms"></div>`;
-  $("#undo").hidden = false;
-  $("#undobtn").onclick = () => { haptic("undo"); clearTimeout(pendingDec.timer); pendingDec = null; $("#undo").hidden = true; deckTop = null; renderDeck(); };
 }
 async function commitDecision() {
   const p = pendingDec; if (!p) return;
-  pendingDec = null; clearTimeout(p.timer); $("#undo").hidden = true;
+  pendingDec = null; clearTimeout(p.timer); deckTop = null;
+  if (!sess.start) sess.start = Date.now();
+  const skey = p.body.verdict === "rejected" ? "rejected" : p.body.verdict === "changes" ? "changes" : "approved"; sess[skey]++;
   try {
     const res = await fetch("/api/decide", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p.body), keepalive: true });
     if (!res.ok) throw new Error((await res.json()).error || "save failed");
-    delete deckNotes[p.it.id]; delete drafts[p.it.id + "@" + p.body.version];
+    delete deckNotes[p.it.id]; delete deckPins[p.it.id]; delete drafts[p.it.id + "@" + p.body.version];
     skipped = skipped.filter(x => x !== p.it.id);
     await load(true);
-  } catch (e) { haptic("error"); toast("Not sent: " + e.message); deckTop = null; renderDeck(); }
+  } catch (e) { haptic("error"); toast("Not sent: " + e.message); sess[skey] = Math.max(0, sess[skey] - 1); deckTop = null; renderDeck(); }
 }
 addEventListener("pagehide", () => commitDecision());
 document.addEventListener("visibilitychange", () => { if (document.hidden) commitDecision(); });
@@ -1533,7 +1758,7 @@ function openZoom(src) {
   label = (src.querySelector && src.querySelector(".flabel")?.textContent) || "";
   const z = $("#zoomer");
   z.innerHTML = `<div class="zbar"><span>${esc(label.replace(/ · tap.*$/, ""))} <b id="zpct">100%</b></span><button id="zclose">✕ Close</button></div><div class="zin"></div>
-    <div class="zhint">Pinch or double-tap to zoom · drag to move · swipe down to close</div>`;
+    <div class="zhint">Opens at real size · double-tap: whole image ↔ 2× · pinch · drag · swipe down to close</div>`;
   z.hidden = false;
   const zin = z.querySelector(".zin"); zin.appendChild(node);
   if (node.tagName === "VIDEO") node.play().catch(() => {});
@@ -1563,7 +1788,8 @@ function openZoom(src) {
     const ox = cx - innerWidth / 2, oy = cy - innerHeight / 2;
     tx = ox - (ox - tx) * ns / s; ty = oy - (oy - ty) * ns / s; s = ns; paint(anim);
   };
-  const ready = () => { measure(); s = 1; tx = ty = 0; paint(); };
+  let kStart = 1;
+  const ready = () => { measure(); kStart = fit < 1 ? 1 : fit; s = kStart / fit; tx = ty = 0; paint(); };
   if (node.tagName === "IMG" && !node.complete) node.addEventListener("load", ready, { once: true });
   else if (node.tagName === "VIDEO" && node.readyState < 1) node.addEventListener("loadedmetadata", ready, { once: true });
   ready();
@@ -1593,7 +1819,7 @@ function openZoom(src) {
     const moved = pan ? Math.hypot(e.clientX - pan.x, e.clientY - pan.y) : 99; pan = null;
     if (moved < 10) {
       const now = performance.now();
-      if (now - lastTap < 300) { zoomAt(s > 1.5 ? 1 : 3, e.clientX, e.clientY, true); haptic("tick"); lastTap = 0; } else lastTap = now;
+      if (now - lastTap < 300) { zoomAt(s * fit < kStart * 1.5 ? kStart * 2 / fit : 1, e.clientX, e.clientY, true); haptic("tick"); lastTap = 0; } else lastTap = now;
     }
   };
   z.onwheel = e => { e.preventDefault(); zoomAt(s * Math.exp(-e.deltaY * 0.0022), e.clientX, e.clientY); };

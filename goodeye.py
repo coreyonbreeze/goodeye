@@ -17,7 +17,7 @@ Store: $GOODEYE_HOME (default ~/.goodeye). Port: $GOODEYE_PORT (default 4400). P
 """
 import argparse, atexit, signal, urllib.request, datetime, threading, http.server, http.cookies, webbrowser, zlib, struct, secrets, hmac, gzip, hashlib, io, json, mimetypes, os, re, shutil, socket, subprocess, sys, time, urllib.parse, uuid
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 HOME = os.path.expanduser(os.environ.get("GOODEYE_HOME", "~/.goodeye"))
 ASSETS = os.path.join(HOME, "assets")
 DECISIONS = os.path.join(HOME, "decisions.jsonl")
@@ -114,6 +114,7 @@ def all_items():
             for v in vs:
                 v["decisions"] = by_key.get(f'{asset_id}@{v["version"]}', [])
                 v["checks"] = checks_for(v)
+                add_dims(v)
                 last = v["decisions"][-1]["verdict"] if v["decisions"] else "pending"
                 v["status"] = "pending" if last == "reopened" else last
             latest = vs[-1]
@@ -223,6 +224,22 @@ def spec_checks(path, kind, contexts, media=None):
 
 
 _CHECK_CACHE = {}
+_DIMS = {}
+
+
+def add_dims(v):
+    """Width and height for still images (GIF and video already have them), so the phone card can size itself."""
+    def dims(rel):
+        key = os.path.join(v["dir"], rel)
+        if key not in _DIMS:
+            d = image_size(os.path.join(ASSETS, key))
+            _DIMS[key] = {"width": d[0], "height": d[1]} if d else {}
+        return _DIMS[key]
+    if v.get("kind") == "image" and not (v.get("media") or {}).get("width"):
+        v["media"] = {**(v.get("media") or {}), **dims(v["file"])}
+    for o in v.get("options") or []:
+        if o.get("kind") == "image" and not (o.get("media") or {}).get("width"):
+            o["media"] = {**(o.get("media") or {}), **dims("options/" + o["file"])}
 
 
 def checks_for(meta):
