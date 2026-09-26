@@ -146,9 +146,17 @@ On a phone the board is a card deck:
 - **All devices** (saved in `~/.goodeye/config.json`): phone notifications on or off, the ntfy topic, a test button, and how many hours before a change request is flagged as stale. Phone mode is shown but only switched on the computer (`goodeye phone` / `--off`), so a phone cannot lock itself out.
 - **This device** (saved in the browser): vibration, undo window (3 to 8 seconds), swipe distance, whether the phone opens to cards or the list, theme (system, dark, light), jumping to the next item after a verdict, quick-reply chips, and replaying the swipe tutorial.
 
+## Desktop review
+
+- **Undo.** A verdict waits 4 seconds (8 when the judge scored it below the bar or it closes others in a slot) before it is sent. Press **⌘Z** or **U**, or click Undo: the item and your note come back.
+- **"v2 answers your note"** sits under the version buttons: your last note, then what the agent changed.
+- **Compare with the previous version:** Off, a before/after **Slider** (drag anywhere), or Side by side.
+- **Magnifier** over still images for small line art (turn it off in ⚙ Settings). Click still opens the zoom viewer.
+- **Shift-click** the asset to drop a numbered pin; the note starts "At pin 1 (top left):".
+
 ## Keyboard
 
-`J` / `K` next and previous item. Hold `C` to flash the previous version. `⌥A` approve, `⌥C` request changes, `⌥R` reject (these work while you type). `1` to `9` rank options in a choice. `Space` play or pause, `,` / `.` or the arrow keys step one frame.
+`J` / `K` next and previous item. Hold `C` to flash the previous version. `⌘Z` or `U` undoes the last verdict before it is sent. `⌥A` approve, `⌥C` request changes, `⌥R` reject (these work while you type). `1` to `9` rank options in a choice. `Space` play or pause, `,` / `.` or the arrow keys step one frame.
 
 ## Privacy and security
 

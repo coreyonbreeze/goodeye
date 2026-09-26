@@ -517,6 +517,53 @@ table.delta td { white-space: nowrap; text-align: right; padding: 4px; border-bo
   .card2 .more { border-top: 1px solid var(--grid); margin-top: 6px; }
   .card2 .more h4:first-child { margin-top: 10px; }
 }
+
+/* ---------- desktop revamp ---------- */
+.answers { margin: 2px 20px 4px; padding: 8px 12px; border-radius: 10px; background: var(--surface-1); border: 1px solid var(--line); font-size: 13px; color: var(--text-secondary); }
+.answers b { color: var(--text-primary); }
+.answers q { color: var(--text-primary); font-style: italic; }
+.answers .arrow { color: var(--ok); margin: 0 4px; font-weight: 700; }
+.answers .more2 { color: var(--text-muted); font-size: 12px; }
+#dundo { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 60; width: min(480px, 90vw); }
+#dundo:empty { display: none; }
+#dundo .upill, .upill { display: flex; align-items: center; gap: 10px; background: var(--surface-3); border: 1px solid var(--line); border-radius: 999px;
+  padding: 8px 8px 8px 16px; position: relative; overflow: hidden; font-size: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.4); animation: pillIn var(--d-base) var(--ease-out); }
+#dundo .upill span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#dundo .upill button { background: var(--text-primary); color: var(--bg); border: 0; border-radius: 999px; padding: 8px 16px; font-weight: 700; font-size: 14px; cursor: pointer; }
+#dundo .upill kbd { font: 11px ui-monospace, monospace; opacity: .6; margin-left: 4px; }
+#dundo .upill .bar2 { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--accent); animation: drain 4s linear forwards; }
+@keyframes pillIn { from { opacity: 0; transform: translateY(8px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes drain { from { width: 100%; } to { width: 0; } }
+@keyframes pinIn { from { transform: scale(.2); opacity: 0; } to { transform: none; opacity: 1; } }
+.stage .pane { position: relative; }
+.pin { position: absolute; z-index: 3; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; background: var(--accent); color: #fff;
+  font-size: 13px; font-weight: 800; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 3px rgba(255,255,255,.85), 0 4px 10px rgba(0,0,0,.4);
+  pointer-events: none; animation: pinIn .28s var(--ease-spring); }
+.cmp { position: relative; width: 100%; height: 100%; }
+.cmp > div:not(.cmp-h) { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.cmp img, .cmp video, .cmp canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
+.cmp .cmp-b { clip-path: inset(0 calc(100% - var(--pos, 50%)) 0 0); }
+.cmp .cmp-h { position: absolute; top: 0; bottom: 0; left: var(--pos, 50%); width: 44px; margin-left: -22px; z-index: 3; touch-action: none; display: flex; justify-content: center; cursor: ew-resize; }
+.cmp .cmp-h::before { content: ""; width: 3px; height: 100%; background: #fff; box-shadow: 0 0 6px rgba(0,0,0,.5); }
+.cmp .cmp-h::after { content: "⇆"; position: absolute; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border-radius: 50%; background: #fff; color: #111;
+  display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+.cmp .tag { position: absolute; top: 10px; z-index: 2; background: rgba(0,0,0,.6); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 999px; }
+.cmp .tag.a { left: 10px; } .cmp .tag.b { right: 10px; }
+.dcmp { flex: 1; align-self: stretch; min-height: 320px; cursor: ew-resize; user-select: none; }
+.stage > .pane:has(.dcmp) { flex: 1; align-self: stretch; }
+#loupe { position: fixed; z-index: 70; width: 200px; height: 200px; border-radius: 50%; pointer-events: none; display: none; background-repeat: no-repeat; background-color: #fff;
+  border: 3px solid #fff; box-shadow: 0 10px 30px rgba(0,0,0,.45), 0 0 0 1px rgba(0,0,0,.2); }
+.sess { margin-top: 18px; font-size: 14px; color: var(--text-secondary); text-align: center; }
+.sess b { color: var(--text-primary); }
+/* style pass: the phone's tokens on desktop */
+.raw { border-radius: 10px; box-shadow: var(--e-card); }
+.chip, .row, .btn, .seg button, .sbtn { transition: background var(--d-fast) var(--ease-out), border-color var(--d-fast) var(--ease-out), transform var(--d-fast) var(--ease-out); }
+.btn { border-radius: var(--r-btn); }
+.btn:active, .chip:active { transform: scale(.97); }
+.decide { box-shadow: 0 -8px 24px rgba(0,0,0,.18); }
+.modal .box { border-radius: 18px; box-shadow: var(--e-card); }
+@media (max-width: 760px) { #loupe { display: none !important; } #dundo { display: none; } }
+@media (prefers-reduced-motion: reduce) { #dundo .upill, .pin { animation: none; } .chip, .row, .btn { transition: none; } }
 </style>
 </head>
 <body>
@@ -524,6 +571,7 @@ table.delta td { white-space: nowrap; text-align: right; padding: 4px; border-bo
 <div id="deck" hidden></div>
 <div id="sheet" hidden></div>
 <div id="undo" hidden></div>
+<div id="dundo"></div>
 <div id="zoomer" hidden></div>
 <div id="scrim"></div>
 <div class="app">
@@ -585,7 +633,7 @@ function renderQueue() {
     const v = i.versions[i.versions.length - 1];
     return `<div class="row ${inslot ? "inslot" : ""} ${sel.id === i.id ? "on" : ""}" data-id="${esc(i.id)}"><div class="thumb">${thumbOf(i)}</div><div style="min-width:0">
       <div class="t">${esc(i.title)}</div>
-      <div class="m">${checksOf(v).length ? `<span class="warnbadge" title="Spec check">⚠</span>` : ""}<span class="pill st-${i.status}">${STATUS[i.status]}</span>${i.status === "changes" && lastDecision(i) && (Date.now() - new Date(lastDecision(i).at)) / 36e5 >= staleH ? `<span class="stale">${Math.round((Date.now() - new Date(lastDecision(i).at)) / 36e5)} h</span>` : ""}<span>${v.kind === "choice" ? `Choice · ${v.options.length}` : esc(v.version)}</span>${i.project ? `<span>${esc(i.project)}</span>` : ""}</div></div></div>`;
+      <div class="m">${checksOf(v).length ? `<span class="warnbadge" title="Spec check">⚠</span>` : ""}<span class="pill st-${pendingDec && pendingDec.it.id === i.id ? "approved" : i.status}">${pendingDec && pendingDec.it.id === i.id ? "Sending…" : STATUS[i.status]}</span>${i.status === "changes" && lastDecision(i) && (Date.now() - new Date(lastDecision(i).at)) / 36e5 >= staleH ? `<span class="stale">${Math.round((Date.now() - new Date(lastDecision(i).at)) / 36e5)} h</span>` : ""}<span>${v.kind === "choice" ? `Choice · ${v.options.length}` : esc(v.version)}</span>${i.project ? `<span>${esc(i.project)}</span>` : ""}</div></div></div>`;
   };
   const done = new Set(), out = [];
   shown.forEach(i => {
@@ -628,10 +676,11 @@ function renderMain() {
   $("#main").innerHTML = `
     <div class="head"><h2>${esc(it.title)}</h2><div class="sub">${esc(it.project ? it.project + " · " : "")}${esc(it.id)} · ${esc(v.kind)} · ${(v.size_bytes / 1048576).toFixed(1)} MB · submitted ${new Date(v.submitted_at).toLocaleString()}</div></div>
     <div class="bar"><span class="lbl">Version</span>${it.versions.map(x => `<span class="chip ${x === v ? "on" : ""}" data-v="${esc(x.version)}"><span class="pill st-${x.status}"></span>${esc(x.version)}</span>`).join("")}
-      <span class="gap"></span>${prev ? `<label class="toggle"><input type="checkbox" id="cmp" ${sel.compare ? "checked" : ""}> Side by side with ${esc(prev.version)}</label>` : ""}</div>
+      <span class="gap"></span>${prev ? `<span class="lbl">Compare with ${esc(prev.version)}</span>${[["", "Off"], ["slider", "Slider"], ["side", "Side by side"]].map(([k, l]) => `<span class="chip ${(sel.compare || "") === k ? "on" : ""}" data-cmp="${k}">${l}</span>`).join("")}` : ""}</div>
+    ${answersHtml(it, v, prev)}
     ${reopenHtml(it)}${checksHtml(v)}${slotHtml(it)}
     <div class="bar"><span class="lbl">View</span>${["asset", ...(v.contexts || []), ...(sibsOf(it).length > 1 ? ["slot"] : [])].map(c => `<span class="chip ${sel.view === c ? "on" : ""}" data-view="${esc(c)}">${c === "asset" ? "Asset" : c === "slot" ? `Compare all ${sibsOf(it).length} candidates` : "In context: " + esc(CTX[c] || c)}</span>`).join("")}</div>
-    <div class="stage">${sel.view === "slot" ? slotGrid(it) : sel.compare && prev ? pane(prev, prev.version + " (previous)") + pane(v, v.version + " (this)") : pane(v, "")}</div>
+    <div class="stage">${sel.view === "slot" ? slotGrid(it) : sel.compare === "slider" && prev && sel.view === "asset" ? sliderPane(prev, v) : sel.compare && prev ? pane(prev, prev.version + " (previous)") + pane(v, v.version + " (this)") : pane(v, "")}</div>
     <div class="pbar" id="pbar" hidden></div>
     <div class="decide">
       ${latest ? chipsHtml() : ""}
@@ -650,10 +699,12 @@ function renderMain() {
   $("#main").querySelectorAll("[data-v]").forEach(c => c.onclick = () => { sel.version = c.dataset.v; renderMain(); renderSide(); });
   $("#main").querySelectorAll("[data-view]").forEach(c => c.onclick = () => { sel.view = c.dataset.view; renderMain(); });
   $("#main").querySelectorAll("[data-d]").forEach(b => b.onclick = () => decide(b.dataset.d));
-  const cmp = $("#cmp"); if (cmp) cmp.onchange = () => { sel.compare = cmp.checked; renderMain(); };
+  $("#main").querySelectorAll("[data-cmp]").forEach(c => c.onclick = () => { sel.compare = c.dataset.cmp || false; renderMain(); });
   wireSlot(it);
   wireReopen(it);
   if ($("#fb")) wireChips($("#main"), $("#fb"));
+  requestAnimationFrame(placeDeskPins);
+  $("#main").querySelectorAll(".stage img").forEach(i => i.addEventListener("load", placeDeskPins, { once: true }));
   mountPlayers(it);
   afterRender();
 }
@@ -732,6 +783,11 @@ function slotGrid(it) {
 
 const ago = t => { const m = Math.round((Date.now() - new Date(t)) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
 const lastDecision = i => { const v = i.versions[i.versions.length - 1]; return v.decisions[v.decisions.length - 1]; };
+function sessHtml() {
+  const n = sess.approved + sess.changes + sess.rejected; if (!n) return "";
+  const mins = Math.max(1, Math.round((Date.now() - sess.start) / 60000));
+  return `<div class="sess"><b>${n} reviewed</b> · ${sess.approved} approved · ${sess.changes} changes${sess.rejected ? ` · ${sess.rejected} rejected` : ""} · ${mins} min</div>`;
+}
 function idleHtml() {
   const waiting = items.filter(i => i.status === "changes").sort((a, b) => (lastDecision(b)?.at || "").localeCompare(lastDecision(a)?.at || ""));
   const n = k => items.filter(i => inFilter(i, k)).length, rej = items.filter(i => ["rejected", "not_chosen"].includes(i.status)).length;
@@ -740,6 +796,7 @@ function idleHtml() {
     <div class="tiles" aria-hidden="true">${[0, 1, 2, 5, 4, 3, 6, 7, 8].map((o, k) => `<span style="--i:${o};--c:var(${colors[k]})"></span>`).join("")}</div>
     <h2>${items.length ? "All caught up" : "Nothing submitted yet"}</h2>
     <p>${items.length ? "Nothing needs your review. New work from the agent opens here by itself." : "Agents submit work with goodeye submit. Try goodeye demo to load samples."}</p>
+    ${sessHtml()}
     ${items.length ? `<div class="counts">${n("approved")} approved · ${waiting.length} waiting on the agent · ${rej} closed</div>` : ""}
     ${waiting.length ? `<div class="waitlist"><h3>Waiting on the agent · ${waiting.length}</h3>${waiting.map(i => `<div class="row" data-id="${esc(i.id)}"><div class="thumb">${thumbOf(i)}</div><div style="min-width:0">
       <div class="t">${esc(i.title)}</div><div class="m"><span class="pill st-changes">Changes requested ${ago(lastDecision(i)?.at)}</span>${(Date.now() - new Date(lastDecision(i)?.at)) / 36e5 >= staleH ? `<span class="stale">stale: the agent is reminded on its next wait</span>` : ""}</div></div></div>`).join("")}</div>` : ""}
@@ -805,6 +862,8 @@ function renderChoice(it, v, latest, draft) {
   wireSlot(it);
   wireReopen(it);
   if ($("#fb")) wireChips($("#main"), $("#fb"));
+  requestAnimationFrame(placeDeskPins);
+  $("#main").querySelectorAll(".stage img").forEach(i => i.addEventListener("load", placeDeskPins, { once: true }));
   mountPlayers(it);
   afterRender();
 }
@@ -819,6 +878,18 @@ function refreshChoiceButtons(v) {
   if (b) b.innerHTML = `<span class="full">${hasNotes ? "Go with 1st pick + notes" : "Go with 1st pick"}</span><span class="short">Go with 1st</span><span class="sub">${hasNotes ? "Agent applies notes. No second review." : "Done. No second review."}</span>`;
 }
 
+function answersHtml(it, v, prev) {
+  const ch = (v.reasoning && v.reasoning.changes) || [];
+  if (!prev || !ch.length) return "";
+  const asked = prev.decisions && prev.decisions.length ? prev.decisions[prev.decisions.length - 1].feedback : "";
+  const q = (asked || ch[0].feedback || "").trim();
+  return `<div class="answers"><b>${esc(v.version)} answers</b>${q ? ` your note <q>${esc(q.length > 140 ? q.slice(0, 140) + "…" : q)}</q>` : ""}
+    <span class="arrow">→</span> ${esc(ch[0].change)}${ch.length > 1 ? ` <span class="more2">+${ch.length - 1} more in the side panel</span>` : ""}</div>`;
+}
+function sliderPane(prev, v) {
+  return `<div class="pane"><div class="cmp dcmp"><div class="cmp-a">${media(v, { cls: "" })}</div><div class="cmp-b">${media(prev, { cls: "" })}</div>
+    <span class="tag a">${esc(prev.version)}</span><span class="tag b">${esc(v.version)}</span><div class="cmp-h" aria-label="Drag to compare"></div></div></div>`;
+}
 function pane(v, cap) {
   const body = sel.view === "asset" ? media(v, { cls: "raw" }) : `<div class="fit"><div class="fit-in">${mockup(sel.view, v)}</div></div>`;
   return `<div class="pane">${cap ? `<div class="cap">${esc(cap)}</div>` : ""}${body}</div>`;
@@ -1201,17 +1272,30 @@ async function decide(verdict, confirmed) {
     if (verdict === "picked" && !d.ranking.length) { toast("Pick at least one option."); return; }
   }
   if (verdict === "changes" && !fb.trim() && !notes) { toast("Say what to change first."); $("#fb").focus(); return; }
-  const res = await fetch("/api/decide", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!res.ok) { toast((await res.json()).error || "Save failed"); return; }
-  delete drafts[v.id + "@" + v.version];
-  haptic(verdict === "rejected" ? "reject" : verdict === "changes" ? "changes" : "approve");
+  // Same undo window as the phone: nothing is sent until it runs out.
+  const closingN = FILLED.includes(verdict) ? toCloseFor(it).length : 0, below = v.judge && v.judge.pass === false;
+  const label = `${STATUS[verdict]}${fb.trim() && FILLED.includes(verdict) ? " with notes" : ""}${closingN ? ` · closes ${closingN}` : ""}`;
   $("#fb").value = "";
-  const saved = await res.json();
-  toast(`${STATUS[verdict]}: ${it.title} ${v.version}.${(saved.closed || []).length ? ` Closed ${saved.closed.length} other candidate${saved.closed.length > 1 ? "s" : ""}.` : ""} Sent to the agent.`);
-  await load(true);
+  queueDecision(it, body, label, below || closingN ? 8000 : 4000);
+  pendingDec.fb = fb;
   const next = prefs.advance ? items.find(i => i.status === "pending" && i.id !== it.id) : null;
   if (!prefs.advance) { renderQueue(); renderMain(); renderSide(); return; }
   if (next) select(next.id); else showIdle();
+}
+function undoPending() {
+  const p = pendingDec; if (!p) return;
+  haptic("undo"); clearTimeout(p.timer); pendingDec = null; deckTop = null;
+  renderDeck(); renderDeskUndo();
+  if (!(isPhone() && deckMode)) {
+    select(p.it.id);
+    if (p.fb && $("#fb")) { $("#fb").value = p.fb; $("#fb").dispatchEvent(new Event("input")); }
+    toast("Undone. Nothing was sent.");
+  }
+}
+function renderDeskUndo() {
+  const d = $("#dundo"); if (!d) return;
+  d.innerHTML = pendingDec && !(isPhone() && deckMode) ? undoPill().replace('<button id="undobtn">Undo</button>', '<button id="undobtn">Undo <kbd>⌘Z</kbd></button>') : "";
+  if (d.innerHTML) d.querySelector("#undobtn").onclick = undoPending;
 }
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2600); }
 
@@ -1222,6 +1306,7 @@ document.addEventListener("keydown", e => {
     if (d) { e.preventDefault(); const b = $(`[data-d="${d}"]`); if (b && !b.disabled) decide(d); return; }
   }
   if (e.key === "Escape" && confirming) { cancelConfirm(); return; }
+  if (pendingDec && !/INPUT|TEXTAREA/.test(e.target.tagName) && (((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") || e.key === "u")) { e.preventDefault(); undoPending(); return; }
   if (e.target.tagName === "TEXTAREA" || e.metaKey || e.ctrlKey) return;
   if (/^[1-9]$/.test(e.key) && !/INPUT|BUTTON/.test(e.target.tagName)) {
     const cur = item(sel.id), v = cur && ver(cur, sel.version);
@@ -1262,7 +1347,7 @@ async function load(force) {
   renderSide();
 }
 /* ---------- per-device preferences (localStorage) ---------- */
-const PREF_DEFAULTS = { haptics: true, undo: 4, swipe: "normal", start: "cards", theme: "auto", advance: true, chips: true };
+const PREF_DEFAULTS = { loupe: true, haptics: true, undo: 4, swipe: "normal", start: "cards", theme: "auto", advance: true, chips: true };
 let prefs = { ...PREF_DEFAULTS };
 try { prefs = { ...PREF_DEFAULTS, ...JSON.parse(localStorage.getItem("goodeye.prefs") || "{}") }; } catch (e) {}
 function savePrefs() { try { localStorage.setItem("goodeye.prefs", JSON.stringify(prefs)); } catch (e) {} applyPrefs(); }
@@ -1327,7 +1412,7 @@ function undoPill() {
 }
 function wireUndo() {
   const b = $("#undobtn"); if (!b) return;
-  b.onclick = () => { haptic("undo"); clearTimeout(pendingDec.timer); pendingDec = null; deckTop = null; renderDeck(); };
+  b.onclick = undoPending;
 }
 function renderDeck() {
   const on = isPhone() && deckMode;
@@ -1341,10 +1426,7 @@ function renderDeck() {
   if (top && deckTop === top.id + "@" + top.versions[top.versions.length - 1].version && $("#deck .card2")) return;
   deckTop = top ? top.id + "@" + top.versions[top.versions.length - 1].version : null;
   if (!top) {
-    const n = sess.approved + sess.changes + sess.rejected;
-    const mins = sess.start ? Math.max(1, Math.round((Date.now() - sess.start) / 60000)) : 0;
-    $("#deck").innerHTML = `<div class="deckidle">${idleHtml().replace('class="idle"', 'class="idle" style="padding:0"')}
-      ${n ? `<div class="sess"><b>${n} reviewed</b> · ${sess.approved} approved · ${sess.changes} changes${sess.rejected ? ` · ${sess.rejected} rejected` : ""} · ${mins} min</div>` : ""}</div>
+    $("#deck").innerHTML = `<div class="deckidle">${idleHtml().replace('class="idle"', 'class="idle" style="padding:0"')}</div>
       <div class="actions">${pendingDec ? undoPill() : ""}</div>`;
     $("#deck").querySelectorAll(".row[data-id]").forEach(r => r.onclick = () => openDetail(r.dataset.id));
     wireUndo();
@@ -1720,7 +1802,7 @@ function queueDecision(it, body, label, ms = 4000) {
   ms = ms > 4000 ? Math.max(ms, prefs.undo * 2000) : prefs.undo * 1000;   // cautious cases keep at least double
   const timer = setTimeout(commitDecision, ms);
   pendingDec = { it, body, timer, label, ms };
-  deckTop = null; renderDeck();
+  deckTop = null; renderDeck(); renderDeskUndo();
   haptic(body.verdict === "rejected" ? "reject" : body.verdict === "changes" ? "changes" : "approve");
 }
 async function commitDecision() {
@@ -1733,6 +1815,7 @@ async function commitDecision() {
     if (!res.ok) throw new Error((await res.json()).error || "save failed");
     delete deckNotes[p.it.id]; delete deckPins[p.it.id]; delete drafts[p.it.id + "@" + p.body.version];
     skipped = skipped.filter(x => x !== p.it.id);
+    renderDeskUndo();
     await load(true);
   } catch (e) { haptic("error"); toast("Not sent: " + e.message); sess[skey] = Math.max(0, sess[skey] - 1); deckTop = null; renderDeck(); }
 }
@@ -1828,8 +1911,50 @@ function openZoom(src) {
 }
 function closeZoom() { const z = $("#zoomer"); if (z.hidden) return; removeEventListener("resize", z._resize); z.hidden = true; z.innerHTML = ""; z.style.background = ""; haptic("tick"); }
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeZoom(); });
-// Desktop and detail view: click the asset to zoom.
-document.addEventListener("click", e => { const r = e.target.closest(".stage .raw"); if (r && r.tagName !== "VIDEO") openZoom(r); });
+// Desktop and detail view: click the asset to zoom; Shift-click drops a numbered pin for the note.
+document.addEventListener("click", e => {
+  const r = e.target.closest(".stage .raw"); if (!r) return;
+  if (e.shiftKey) return addDeskPin(r, e);
+  if (r.tagName !== "VIDEO") openZoom(r);
+});
+function addDeskPin(el, e) {
+  const it = item(sel.id); if (!it) return;
+  const v = ver(it, sel.version); if (v !== it.versions[it.versions.length - 1]) return toast("Pins go on the latest version.");
+  const b = el.getBoundingClientRect(), p = { x: (e.clientX - b.left) / b.width, y: (e.clientY - b.top) / b.height };
+  (deckPins[it.id] ||= []).push(p);
+  const fb = $("#fb"); if (fb && !fb.disabled) {
+    const cur = fb.value.replace(/\s+$/, "");
+    fb.value = (cur ? cur + "\n" : "") + `At pin ${deckPins[it.id].length} (${pinWhere(p)}): `;
+    fb.dispatchEvent(new Event("input")); fb.focus(); fb.setSelectionRange(fb.value.length, fb.value.length);
+  }
+  placeDeskPins(); haptic("lock");
+}
+function placeDeskPins() {
+  const it = item(sel.id), raw = $(".stage .pane:last-child .raw"); if (!it || !raw) return;
+  const pane = raw.closest(".pane"); pane.querySelectorAll(".pin").forEach(x => x.remove());
+  const v = ver(it, sel.version); if (v !== it.versions[it.versions.length - 1] || sel.view !== "asset") return;
+  const pr = pane.getBoundingClientRect(), r = raw.getBoundingClientRect();
+  (deckPins[it.id] || []).forEach((p, i) => pane.insertAdjacentHTML("beforeend", `<span class="pin" style="left:${r.left - pr.left + p.x * r.width}px;top:${r.top - pr.top + p.y * r.height}px">${i + 1}</span>`));
+}
+// Hover magnifier for still images on desktop.
+const loupe = document.createElement("div"); loupe.id = "loupe"; document.body.appendChild(loupe);
+document.addEventListener("mousemove", e => {
+  const img = !isPhone() && prefs.loupe && e.target.closest && e.target.closest(".stage img.raw, .stage .fit-in img, .stage .cmp img");
+  if (!img || !img.naturalWidth || e.buttons) { loupe.style.display = "none"; return; }
+  const r = img.getBoundingClientRect(), z = Math.max(2.5, img.naturalWidth / r.width);
+  const x = e.clientX - r.left, y = e.clientY - r.top, L = 200;
+  loupe.style.display = "block";
+  loupe.style.left = (e.clientX - L / 2) + "px"; loupe.style.top = (e.clientY - L / 2) + "px";
+  loupe.style.backgroundImage = `url("${img.src}")`;
+  loupe.style.backgroundSize = `${r.width * z}px ${r.height * z}px`;
+  loupe.style.backgroundPosition = `${-(x * z - L / 2)}px ${-(y * z - L / 2)}px`;
+});
+// Desktop before/after slider: drag anywhere on it.
+let dcmpDrag = null;
+document.addEventListener("pointerdown", e => { const c = !isPhone() && e.target.closest(".dcmp"); if (!c) return; dcmpDrag = c; moveDcmp(e); e.preventDefault(); });
+document.addEventListener("pointermove", e => { if (dcmpDrag) moveDcmp(e); });
+document.addEventListener("pointerup", () => { dcmpDrag = null; });
+function moveDcmp(e) { const r = dcmpDrag.getBoundingClientRect(); dcmpDrag.style.setProperty("--pos", Math.max(0, Math.min(100, (e.clientX - r.left) / r.width * 100)) + "%"); }
 
 /* ---------- settings ---------- */
 const sw = (id, on) => `<label class="switch2"><input type="checkbox" id="${id}" ${on ? "checked" : ""}><span></span></label>`;
@@ -1858,6 +1983,7 @@ async function openSettings() {
     <div class="srow2"><div>Phone opens to<small>Card stack or the full list and details.</small></div>${sel2("p-start", [["cards", "Cards"], ["list", "List and details"]], prefs.start)}</div>
     <div class="srow2"><div>Theme</div>${sel2("p-theme", [["auto", "Match system"], ["dark", "Dark"], ["light", "Light"]], prefs.theme)}</div>
     <div class="srow2"><div>Go to the next item after a verdict<small>Desktop and the list view.</small></div>${sw("p-advance", prefs.advance)}</div>
+    <div class="srow2"><div>Magnifier on hover<small>Desktop: a loupe over images, for small line art.</small></div>${sw("p-loupe", prefs.loupe)}</div>
     <div class="srow2"><div>Quick-reply chips<small>Your most-used notes as one-tap buttons.</small></div>${sw("p-chips", prefs.chips)}</div>
     <div class="srow2"><div>Swipe tutorial<small>Show the first-run hint again.</small></div><button class="sbtn" id="p-coach">Show again</button></div>
     <div class="smeta">GoodEye ${esc(srv ? srv.version : "")} · <a href="https://github.com/coreyonbreeze/goodeye" target="_blank" rel="noopener" style="color:inherit">github.com/coreyonbreeze/goodeye</a></div>
@@ -1880,7 +2006,7 @@ async function openSettings() {
   }
   const bind = (id, key, conv = v => v) => $m(id).onchange = e => { prefs[key] = e.target.type === "checkbox" ? e.target.checked : conv(e.target.value); savePrefs(); haptic("tick"); };
   bind("#p-haptics", "haptics"); bind("#p-undo", "undo", Number); bind("#p-swipe", "swipe"); bind("#p-start", "start");
-  bind("#p-theme", "theme"); bind("#p-advance", "advance"); bind("#p-chips", "chips");
+  bind("#p-theme", "theme"); bind("#p-advance", "advance"); bind("#p-chips", "chips"); bind("#p-loupe", "loupe");
   $m("#p-coach").onclick = () => { try { localStorage.removeItem("goodeye.coach"); } catch (e) {} toast("The hint shows on the next card"); deckTop = null; };
   const close = () => { m.remove(); deckTop = null; renderDeck(); if (!isPhone() || !deckMode) { renderMain(); renderSide(); } };
   $m("#s-close").onclick = close;

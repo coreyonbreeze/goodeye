@@ -17,7 +17,7 @@ Store: $GOODEYE_HOME (default ~/.goodeye). Port: $GOODEYE_PORT (default 4400). P
 """
 import argparse, atexit, signal, urllib.request, datetime, threading, http.server, http.cookies, webbrowser, zlib, struct, secrets, hmac, gzip, hashlib, io, json, mimetypes, os, re, shutil, socket, subprocess, sys, time, urllib.parse, uuid
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 HOME = os.path.expanduser(os.environ.get("GOODEYE_HOME", "~/.goodeye"))
 ASSETS = os.path.join(HOME, "assets")
 DECISIONS = os.path.join(HOME, "decisions.jsonl")
