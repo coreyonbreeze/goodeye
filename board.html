@@ -1399,6 +1399,8 @@ function pinWhere(p) {
   const v = p.y < .34 ? "top" : p.y > .66 ? "bottom" : "middle", h = p.x < .34 ? "left" : p.x > .66 ? "right" : "center";
   return v === "middle" && h === "center" ? "center" : `${v} ${h}`;
 }
+// "top left, 12% across, 20% down": the agent gets the exact spot, not just a region.
+function pinLabel(n, p) { return `At pin ${n} (${pinWhere(p)}, ${Math.round(p.x * 100)}% across, ${Math.round(p.y * 100)}% down): `; }
 function pinsHtml(it) { return (deckPins[it.id] || []).map((p, i) => `<span class="pin" data-pin="${i}" style="left:0;top:0">${i + 1}</span>`).join(""); }
 function placePins(el, it) {
   const m = el.querySelector("[data-media]"); if (!m) return;
@@ -1667,7 +1669,7 @@ function wireCard(el, it) {
     if (e.type === "pointercancel") return snapHome();              // the browser took the gesture: never a tap, never a verdict
     if (pinned) {                                                    // finger lifted after dropping a pin: write the note (a real gesture, so iOS raises the keyboard)
       const n = deckPins[it.id].length, p = deckPins[it.id][n - 1];
-      return openSheet("notes", it, el, `At pin ${n} (${pinWhere(p)}): `);
+      return openSheet("notes", it, el, pinLabel(n, p));
     }
     if (moved < 8 && performance.now() - t0 < 350) {                 // a tap: short and still
       const hit = [...el.querySelectorAll("[data-opt]")].find(o => { const b = o.getBoundingClientRect(); return e.clientX >= b.left && e.clientX <= b.right && e.clientY >= b.top && e.clientY <= b.bottom; });
@@ -1924,7 +1926,7 @@ function addDeskPin(el, e) {
   (deckPins[it.id] ||= []).push(p);
   const fb = $("#fb"); if (fb && !fb.disabled) {
     const cur = fb.value.replace(/\s+$/, "");
-    fb.value = (cur ? cur + "\n" : "") + `At pin ${deckPins[it.id].length} (${pinWhere(p)}): `;
+    fb.value = (cur ? cur + "\n" : "") + pinLabel(deckPins[it.id].length, p);
     fb.dispatchEvent(new Event("input")); fb.focus(); fb.setSelectionRange(fb.value.length, fb.value.length);
   }
   placeDeskPins(); haptic("lock");

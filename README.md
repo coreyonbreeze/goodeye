@@ -128,7 +128,7 @@ On a phone the board is a card deck:
 
 - **The card fits the asset.** Tall stories get height; wide banners get a 2× center crop so line art reads without zooming. What changed, the decisions and the scores fill the rest of the card.
 - **Flick or drag.** A quick flick commits; a slow partial drag springs back. The stamp locks with a tick at the commit point, and the next card rises underneath.
-- **Hold the image** to drop a numbered pin; the note starts "At pin 1 (top left):". **Hold ✎** to reject.
+- **Hold the image** to drop a numbered pin; the note starts "At pin 1 (top left, 12% across, 20% down):". **Hold ✎** to reject.
 - On a new version, the second frame is a **before/after slider**.
 - **Undo** sits in the action row after each verdict, so it never covers a warning. When the stack is empty you see what you got through: "12 reviewed · 9 approved · 3 changes · 6 min".
 - **Swipe right** approves (a dictated note rides along as "approve with notes"). **Swipe left** asks what should change, with *Reject* as a secondary option. **Swipe up** puts the card at the back.
@@ -152,7 +152,7 @@ On a phone the board is a card deck:
 - **"v2 answers your note"** sits under the version buttons: your last note, then what the agent changed.
 - **Compare with the previous version:** Off, a before/after **Slider** (drag anywhere), or Side by side.
 - **Magnifier** over still images for small line art (turn it off in ⚙ Settings). Click still opens the zoom viewer.
-- **Shift-click** the asset to drop a numbered pin; the note starts "At pin 1 (top left):".
+- **Shift-click** the asset to drop a numbered pin; the note starts "At pin 1 (top left, 12% across, 20% down):".
 
 ## Keyboard
 

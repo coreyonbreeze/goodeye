@@ -49,12 +49,15 @@ goodeye submit <file> --id <stable-id> --title "<human title>" --project <Projec
 
 - `--id` stays the same across versions (`launch-video`, `linkedin-banner`). Each submit is a new, frozen version.
 - `--version` is optional. Pass your own version string if the project has one. Otherwise GoodEye uses `v1`, `v2`, ...
+  Never reuse a version string: versions are frozen and a repeat is refused.
+- `--project` must be the same on every submit and on `goodeye wait` (section 4), or the wait never wakes.
 - `--scores` shows judge scores and a trend chart across versions. Use the same metric names on every version:
   `{"scores": {"clarity": {"value": 2.9, "max": 4, "bar": 2.8, "group": "Quality (0 to 4)"}}, "judge": {"name": "My judge", "pass": true, "notes": ["..."]}}`.
   A flat `{"clarity": 2.9}` also works. Metrics with the same `group` share one chart. `bar` draws the pass line.
-- `--context` (comma list) picks the mockups: `linkedin-banner` (personal profile), `linkedin-company-cover` (company page), `linkedin-post`, `x-banner` (profile header),
-  `x-post`, `instagram-post`, `instagram-story`, `email`, `website-hero`, `browser-tab`, `youtube-thumbnail`,
-  `phone`. Pick every place the asset will really appear. If none fits, leave it off and say so in
+- `--context` (comma list) picks the mockups and the size checks. `goodeye submit --help` lists them and is the
+  source of truth. Today: `linkedin-banner` (personal profile), `linkedin-company-cover` (company page),
+  `linkedin-post`, `x-banner` (profile header), `x-post`, `instagram-post`, `instagram-story`, `email`,
+  `website-hero`, `browser-tab`, `youtube-thumbnail`, `phone`. Pick every place the asset will really appear. If none fits, leave it off and say so in
   `open_questions`. Never pick the nearest wrong one. Contact sheets get no context.
 - Read the submit output. `SPEC WARNING` lines mean the file does not fit a placement you named (wrong size, shape,
   or file weight). Fix it and resubmit before the reviewer looks, or explain in `reasoning` why it is right.
@@ -68,12 +71,20 @@ Right after you submit, start this in the background (Claude Code: the Bash tool
 goodeye wait --project <Project>
 ```
 
-It exits when the reviewer clicks a verdict, and your session wakes with the output. Keep working meanwhile.
-After you handle a verdict, start `goodeye wait` again if items are still pending (`goodeye status` lists them).
+It exits when the reviewer's verdict arrives, and your session wakes with the output. Keep working meanwhile.
+
+- Keep **exactly one** `goodeye wait` running per project while anything is pending. A verdict goes to whichever
+  wait sees it first, so two waits (two sessions, or a second one you forgot) split the verdicts and one session
+  never hears about some of them. One running wait is also what shows the reviewer "Agent listening".
+- After you handle the output, start `goodeye wait` again if items are still pending (`goodeye status` lists them).
+- The reviewer has a few seconds to undo a verdict, so it arrives a few seconds after the click. That is normal.
 
 ## 5. Act on the verdict
 
-The `wait` output ends with a `next:` line. Follow it.
+One `wait` can return **several** verdicts at once (for example an approval plus the NOT_CHOSEN items it closed).
+Handle every `VERDICT` block in the output. Each block ends with a `next:` line. Follow it.
+
+### Verdicts
 
 - **APPROVED** or **PICKED**, no notes: record the approval where the project keeps approvals, then do the
   follow-up work. Do not ask again.
@@ -84,10 +95,23 @@ The `wait` output ends with a `next:` line. Follow it.
   judge, and resubmit with the same `--id` and a `changes` list.
 - **REJECTED**: stop work on that item. Do not resubmit unless asked.
 - **NOT_CHOSEN**: another item won its slot. Stop work on it. Do not resubmit it.
-- **REMINDER** (from `goodeye wait`): changes the reviewer asked for have not come back. Submit those new versions,
-  then run `goodeye wait` again.
-- Notes may start with a time such as `[0:03.20]`: that is the moment in the video or GIF the note is about.
-- **REOPENED**: the reviewer brought a rejected or not-chosen item back into review. Do not change it; wait for its next verdict.
+- **REOPENED**: the reviewer brought a rejected or not-chosen item back into review. Do not change it; wait for
+  its next verdict.
+- **REMINDER** (not a verdict; `wait` exits with it): changes the reviewer asked for have not come back. Submit
+  those new versions, then run `goodeye wait` again.
+
+If the project has no approval record of its own, `goodeye export DIR --project <Project>` copies every approved
+file with a manifest (who approved, when, notes to apply).
+
+### Reading notes
+
+- **Time stamps:** a note that starts with `[0:03.20]` is about that moment in the video or GIF.
+- **Pins:** `At pin 2 (top left, 12% across, 20% down): the stroke is too thin` points at a spot on the image.
+  The percentages are measured from the image's top-left corner, so 12% across and 20% down is that exact point
+  at any size. The words are only a rough region.
+- **Notes on choice options** ("take the M from this one") mean: take that part from that option into pick 1.
+- Notes are dictated, so expect spoken phrasing and small transcription errors. Act on the intent. Ask only if the
+  intent is unclear.
 
 ## 6. Choices: when the reviewer should pick between options
 
