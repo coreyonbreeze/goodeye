@@ -127,6 +127,7 @@ On a phone the board is a card deck:
 
 
 - **Swipe right** approves (a dictated note rides along as "approve with notes"). **Swipe left** asks what should change, with *Reject* as a secondary option. **Swipe up** puts the card at the back.
+- **Pinch the image or tap 🔍** to open a full-screen zoom viewer: pinch up to 8×, double-tap to jump in, drag to pan, swipe down to close. On desktop, click the asset and use the scroll wheel.
 - **Tap the image** to page through the asset, the previous version, and each placement mockup. **Tap the text** to expand the reasoning and every score with its change since the last version.
 - Every verdict waits 4 seconds with **Undo** (8 seconds when the judge scored it below the bar). Approving in a slot asks first and lists what will close. Closed items can be **reopened**.
 - Choices: tap options to rank, swipe right to go with your 1st pick.

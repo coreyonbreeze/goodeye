@@ -287,6 +287,15 @@ table.delta td { white-space: nowrap; text-align: right; padding: 4px; border-bo
 }
 @media (max-width: 420px) { .opts { grid-template-columns: 1fr !important; } }
 #cardsbtn { display: none; }
+#zoomer { position: fixed; inset: 0; z-index: 80; background: #0b0b0b; touch-action: none; overflow: hidden; user-select: none; -webkit-user-select: none; }
+#zoomer[hidden] { display: none; }
+#zoomer .zin { position: absolute; left: 50%; top: 50%; transform-origin: 0 0; will-change: transform; }
+#zoomer .zin img, #zoomer .zin video, #zoomer .zin canvas { display: block; max-width: none; pointer-events: none; -webkit-touch-callout: none; }
+#zoomer .zbar { position: absolute; left: 0; right: 0; top: 0; display: flex; justify-content: space-between; align-items: center;
+  padding: calc(env(safe-area-inset-top) + 10px) 14px 10px; background: linear-gradient(rgba(0,0,0,.7), transparent); color: #fff; z-index: 2; font-size: 13px; }
+#zoomer .zbar button { background: rgba(255,255,255,.14); color: #fff; border: 0; border-radius: 999px; padding: 8px 14px; font-size: 15px; cursor: pointer; }
+#zoomer .zhint { position: absolute; bottom: calc(env(safe-area-inset-bottom) + 16px); left: 0; right: 0; text-align: center; color: rgba(255,255,255,.6); font-size: 12px; z-index: 2; }
+.stage .raw:not(video) { cursor: zoom-in; }
 #gearbtn { display: none; }
 .settings .box { text-align: left; max-width: 520px; max-height: 88vh; overflow-y: auto; }
 .settings h3 { margin: 0 0 4px; font-size: 18px; }
@@ -389,6 +398,8 @@ table.delta td { white-space: nowrap; text-align: right; padding: 4px; border-bo
   .frames { position: absolute; top: 8px; left: 10px; right: 10px; display: flex; gap: 4px; z-index: 2; }
   .frames i { flex: 1; height: 3px; border-radius: 2px; background: rgba(255,255,255,.3); }
   .frames i.on { background: #fff; }
+  .zoombtn { position: absolute; right: 8px; bottom: 8px; z-index: 3; width: 40px; height: 40px; border-radius: 50%; border: 0;
+    background: rgba(0,0,0,.55); color: #fff; font-size: 17px; display: flex; align-items: center; justify-content: center; }
   .cmedia .nav { position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; width: 30px; height: 30px; border-radius: 50%;
     background: rgba(0,0,0,.45); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 22px; line-height: 1; pointer-events: none; }
   .cmedia .nav.l { left: 6px; } .cmedia .nav.r { right: 6px; }
@@ -426,6 +437,7 @@ table.delta td { white-space: nowrap; text-align: right; padding: 4px; border-bo
 <div id="deck" hidden></div>
 <div id="sheet" hidden></div>
 <div id="undo" hidden></div>
+<div id="zoomer" hidden></div>
 <div id="scrim"></div>
 <div class="app">
   <aside class="queue" id="queue">
@@ -1238,6 +1250,7 @@ function renderDeck() {
   wireCard(el, top);
   $("#deck").querySelectorAll("[data-act]").forEach(b => b.onclick = () => act(b.dataset.act, top, el));
   el.querySelector(".det").onclick = e => { e.stopPropagation(); openDetail(top.id); };
+  const zb = el.querySelector(".zoombtn"); if (zb) zb.onclick = e => { e.stopPropagation(); openZoom(el.querySelector("[data-media]")); };
   startDeckGifs(el);
   fitCard(el);
   el.querySelectorAll("img").forEach(i => i.addEventListener("load", () => fitCard(el), { once: true }));
@@ -1291,7 +1304,7 @@ function cardHtml(it, behind) {
   const flabel = f === "asset" ? (frames.length > 1 ? `${esc(v.version)} · tap › for ${frames[1] === "prev" ? "the previous version" : "mockups"}` : "")
     : f === "prev" ? `Previous: ${esc(prev.version)} · compare` : "In context: " + esc(CTX[fctx] || fctx) + (fpart ? ` · ${fpart}` : "");
   const body = v.kind === "choice" ? choiceGrid(v) : `<div class="cmedia" data-media>${frames.length > 1 ? `<div class="frames">${frames.map((_, i) => `<i class="${i === fi ? "on" : ""}"></i>`).join("")}</div>
-    <div class="flabel">${flabel}</div><span class="nav l">‹</span><span class="nav r">›</span>` : ""}${inner}</div>`;
+    <div class="flabel">${flabel}</div><span class="nav l">‹</span><span class="nav r">›</span>` : ""}<button class="zoombtn" aria-label="Zoom">🔍</button>${inner}</div>`;
   const exp = expanded[it.id];
   const scoreRows = Object.entries(v.scores || {}).map(([k, x]) => { const pv = prev?.scores?.[k]?.value, pct = (x.max || 0) <= 1 && x.value <= 1;
     const f = n => pct ? Math.round(n * 100) + "%" : (+n).toFixed(2);
@@ -1367,6 +1380,11 @@ function wireCard(el, it) {
     stamps.later.style.opacity = Math.abs(dx) < 60 ? Math.max(0, Math.min(1, -dy / 120)) : 0;
   };
   el.addEventListener("pointerdown", e => {
+    if (pid !== null && e.pointerId !== pid && e.target.closest("[data-media]")) {   // a second finger: pinch means zoom, not swipe
+      const keep = pid; pid = null; dragging = false; snapHome(); try { el.releasePointerCapture(keep); } catch (x) {}
+      return openZoom(el.querySelector("[data-media]"));
+    }
+    if (e.target.closest(".zoombtn")) return;
     if (e.target.closest("button, .coach") || e.target.closest(".card2.expanded .cinfo")) {
       if (e.target.closest(".card2.expanded .cinfo") && !e.target.closest("button")) infoTapStart = { x: e.clientX, y: e.clientY };
       return;
@@ -1497,6 +1515,95 @@ addEventListener("pagehide", () => commitDecision());
 document.addEventListener("visibilitychange", () => { if (document.hidden) commitDecision(); });
 function openDetail(id) { deckMode = false; renderDeck(); select(id); }
 $("#cardsbtn").onclick = () => { deckMode = true; deckTop = null; renderDeck(); window.scrollTo(0, 0); };
+
+/* ---------- zoom viewer: pinch, double-tap, drag, wheel ---------- */
+function openZoom(src) {
+  if (!src) return;
+  // Take the full-resolution asset for image/video frames; for mockups, clone the mockup at its natural size.
+  let node, label = "";
+  const media = src.querySelector(":scope > img, :scope > video, :scope > canvas") || (src.matches("img, video, canvas") ? src : null);
+  if (media) {
+    if (media.tagName === "CANVAS") { node = document.createElement("canvas"); node.width = media.width; node.height = media.height; node.getContext("2d").drawImage(media, 0, 0);
+      const gp = deckGifs.find(p => p.el === media); if (gp) { node.dataset.src = media.dataset.src; } }
+    else { node = media.cloneNode(true); if (node.tagName === "VIDEO") { node.muted = true; node.loop = true; node.playsInline = true; node.autoplay = true; } }
+  } else {
+    const fit = src.querySelector(".cfit > div, .fit-in") || src;
+    node = document.createElement("div"); node.innerHTML = fit.innerHTML; node.style.width = "max-content"; node.style.background = "transparent";
+  }
+  label = (src.querySelector && src.querySelector(".flabel")?.textContent) || "";
+  const z = $("#zoomer");
+  z.innerHTML = `<div class="zbar"><span>${esc(label.replace(/ · tap.*$/, ""))} <b id="zpct">100%</b></span><button id="zclose">✕ Close</button></div><div class="zin"></div>
+    <div class="zhint">Pinch or double-tap to zoom · drag to move · swipe down to close</div>`;
+  z.hidden = false;
+  const zin = z.querySelector(".zin"); zin.appendChild(node);
+  if (node.tagName === "VIDEO") node.play().catch(() => {});
+  if (node.tagName === "CANVAS" && node.dataset.src) { const p = new GifPlayer(node); p.loop = true; p.ready.then(() => p.play()); deckGifs.push(p); startDeckGifs(document.createElement("div")); }
+  haptic("tick");
+  let W = 0, H = 0, fit = 1, s = 1, tx = 0, ty = 0;
+  const measure = () => {
+    W = node.naturalWidth || node.videoWidth || node.width || node.scrollWidth || 1;
+    H = node.naturalHeight || node.videoHeight || node.height || node.scrollHeight || 1;
+    if (node.tagName === "IMG" || node.tagName === "VIDEO" || node.tagName === "CANVAS") { node.style.width = W + "px"; node.style.height = H + "px"; }
+    fit = Math.min((innerWidth - 16) / W, (innerHeight - 120) / H);
+  };
+  const clamp = () => {
+    const sw = W * fit * s, sh = H * fit * s;
+    const mx = Math.max(0, (sw - innerWidth) / 2 + 8), my = Math.max(0, (sh - innerHeight) / 2 + 8);
+    tx = Math.max(-mx, Math.min(mx, tx)); ty = Math.max(-my, Math.min(my, ty));
+  };
+  const paint = (anim) => {
+    clamp();
+    zin.style.transition = anim ? "transform .22s ease-out" : "";
+    const k = fit * s;
+    zin.style.transform = `translate(${tx - W * k / 2}px, ${ty - H * k / 2}px) scale(${k})`;
+    const pct = z.querySelector("#zpct"); if (pct) pct.textContent = Math.round(k * 100) + "%";
+  };
+  const zoomAt = (ns, cx, cy, anim) => {         // keep the point under (cx, cy) fixed on screen
+    ns = Math.max(1, Math.min(8, ns));
+    const ox = cx - innerWidth / 2, oy = cy - innerHeight / 2;
+    tx = ox - (ox - tx) * ns / s; ty = oy - (oy - ty) * ns / s; s = ns; paint(anim);
+  };
+  const ready = () => { measure(); s = 1; tx = ty = 0; paint(); };
+  if (node.tagName === "IMG" && !node.complete) node.addEventListener("load", ready, { once: true });
+  else if (node.tagName === "VIDEO" && node.readyState < 1) node.addEventListener("loadedmetadata", ready, { once: true });
+  ready();
+  const pts = new Map(); let pinch = null, pan = null, lastTap = 0, downY = 0;
+  z.onpointerdown = e => {
+    if (e.target.id === "zclose") return;
+    z.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), s, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }; pan = null; }
+    else { pan = { x: e.clientX, y: e.clientY, tx, ty }; downY = e.clientY; }
+  };
+  z.onpointermove = e => {
+    if (!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && pts.size >= 2) { const [a, b] = [...pts.values()]; zoomAt(pinch.s * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d, (a.x + b.x) / 2, (a.y + b.y) / 2); }
+    else if (pan) {
+      if (s > 1.01) { tx = pan.tx + e.clientX - pan.x; ty = pan.ty + e.clientY - pan.y; paint(); }
+      else { ty = Math.max(0, e.clientY - downY); zin.style.transform = `translate(${-W * fit / 2}px, ${ty - H * fit / 2}px) scale(${fit})`; z.style.background = `rgba(11,11,11,${1 - Math.min(.6, ty / 400)})`; }
+    }
+  };
+  z.onpointerup = z.onpointercancel = e => {
+    if (!pts.has(e.pointerId)) return;                      // fingers from the pinch that opened the viewer
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;
+    if (pts.size) return;
+    if (s <= 1.01 && e.clientY - downY > 110) return closeZoom();
+    if (s <= 1.01) { ty = 0; z.style.background = ""; paint(true); }
+    const moved = pan ? Math.hypot(e.clientX - pan.x, e.clientY - pan.y) : 99; pan = null;
+    if (moved < 10) {
+      const now = performance.now();
+      if (now - lastTap < 300) { zoomAt(s > 1.5 ? 1 : 3, e.clientX, e.clientY, true); haptic("tick"); lastTap = 0; } else lastTap = now;
+    }
+  };
+  z.onwheel = e => { e.preventDefault(); zoomAt(s * Math.exp(-e.deltaY * 0.0022), e.clientX, e.clientY); };
+  z.querySelector("#zclose").onclick = closeZoom;
+  z._resize = () => { measure(); paint(); }; addEventListener("resize", z._resize);
+}
+function closeZoom() { const z = $("#zoomer"); if (z.hidden) return; removeEventListener("resize", z._resize); z.hidden = true; z.innerHTML = ""; z.style.background = ""; haptic("tick"); }
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeZoom(); });
+// Desktop and detail view: click the asset to zoom.
+document.addEventListener("click", e => { const r = e.target.closest(".stage .raw"); if (r && r.tagName !== "VIDEO") openZoom(r); });
 
 /* ---------- settings ---------- */
 const sw = (id, on) => `<label class="switch2"><input type="checkbox" id="${id}" ${on ? "checked" : ""}><span></span></label>`;
