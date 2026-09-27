@@ -622,6 +622,11 @@ def phone_token():
     return tok
 
 
+def media_key():
+    """Derived from the phone token: opens files only (never verdicts or settings); changes with --new-token."""
+    return hmac.new(phone_token().encode(), b"goodeye-media", hashlib.sha256).hexdigest()[:32]
+
+
 def lan_addresses():
     """This machine's Wi-Fi/LAN address, plus a Tailscale address when Tailscale is installed."""
     out = []
@@ -696,6 +701,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+    def log_request(self, code="-", size="-"):
+        """Phone troubleshooting: one line per request from another device, in ~/.goodeye/access.log (kept small)."""
+        if self.client_is_local():
+            return
+        try:
+            path = os.path.join(HOME, "access.log")
+            if os.path.exists(path) and os.path.getsize(path) > 512 * 1024:
+                os.replace(path, path + ".1")
+            u = urllib.parse.urlparse(self.path)
+            q = urllib.parse.parse_qs(u.query)
+            auth = "cookie" if "goodeye=" in (self.headers.get("Cookie") or "") else ("key" if q.get("k") else "none")
+            ua = (self.headers.get("User-Agent") or "")[:90]
+            with open(path, "a") as f:
+                f.write(f"{now()} {self.client_address[0]} {self.command} {u.path} {code} auth={auth} range={self.headers.get('Range') or '-'} ua={ua}\n")
+        except OSError:
+            pass
+
     def client_is_local(self):
         return self.client_address[0] in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
 
@@ -703,6 +725,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         host = (self.headers.get("Host") or "").lower()
         port = self.server.server_address[1]
         return host in {f"localhost:{port}", f"127.0.0.1:{port}", f"[::1]:{port}"}
+
+    def has_media_key(self):
+        """Read-only key for /files. iPhone video (and Home Screen apps) can load media without the sign-in cookie."""
+        if not LAN or not urllib.parse.urlparse(self.path).path.startswith("/files/"):
+            return False
+        k = (urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("k") or [""])[0]
+        return bool(k) and hmac.compare_digest(k, media_key())
 
     def has_token(self):
         jar = http.cookies.SimpleCookie()
@@ -719,7 +748,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         A phone: only in phone mode, and only with the secret token cookie."""
         if self.host_is_local():
             return self.client_is_local()
-        return LAN and self.has_token()
+        return LAN and (self.has_token() or self.has_media_key())
 
     def allowed_origin(self):
         """Writes must come from the board page itself. Browsers always send Origin on cross-site POSTs."""
@@ -832,7 +861,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             with open(os.path.join(HERE, "board.html"), "rb") as f:
                 return self.send(200, f.read(), "text/html; charset=utf-8", csp=BOARD_CSP)
         if path == "/api/items":
-            return self.send(200, {"items": all_items(), "agents": agents_alive(), "stale_hours": stale_hours()})
+            extra = {"mkey": media_key()} if LAN and not self.host_is_local() and self.has_token() else {}
+            return self.send(200, {"items": all_items(), "agents": agents_alive(), "stale_hours": stale_hours(), **extra})
         if path.startswith("/files/"):
             rel = urllib.parse.unquote(path[len("/files/"):])
             full = os.path.realpath(os.path.join(ASSETS, rel))
@@ -889,7 +919,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not self.allowed_host() or not self.allowed_origin():
             return self.send(403, {"error": "forbidden origin"})
         route = urllib.parse.urlparse(self.path).path
-        if route not in ("/api/decide", "/api/settings"):
+        if route not in ("/api/decide", "/api/settings", "/api/clientlog"):
             return self.send(404, {"error": "not found"})
         # A JSON content type forces a CORS preflight for cross-site callers, which this server never approves.
         if (self.headers.get("Content-Type") or "").split(";")[0].strip().lower() != "application/json":
@@ -906,6 +936,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.send(400, {"error": "bad json"})
         if not isinstance(body, dict):
             return self.send(400, {"error": "bad json"})
+        if route == "/api/clientlog":
+            try:
+                with open(os.path.join(HOME, "client.log"), "a") as f:
+                    f.write(f"{now()} {self.client_address[0]} {json.dumps(body)[:2000]}\n")
+            except OSError:
+                pass
+            return self.send(200, {"ok": True})
         if route == "/api/settings":
             return self.save_settings(body)
         verdict = body.get("verdict")

@@ -612,7 +612,11 @@ const CTX = { "linkedin-banner": "LinkedIn banner", "linkedin-company-cover": "L
 let agents = [], staleH = 12;
 let started = false, items = [], filter = "pending", sel = { id: null, version: null, view: "asset", compare: false }, lastSig = "";
 
-const fileUrl = v => `/files/${v.dir.split("/").map(encodeURIComponent).join("/")}/${encodeURIComponent(v.file)}`;
+let mkey = "";   // read-only media key, sent only to signed-in phones
+const fileUrl = v => `/files/${v.dir.split("/").map(encodeURIComponent).join("/")}/${v.file.split("/").map(encodeURIComponent).join("/")}${mkey ? `?k=${mkey}` : ""}`;
+function clientLog(ev) {           // phone troubleshooting: what the video player reports goes to ~/.goodeye/client.log
+  try { fetch("/api/clientlog", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...ev, ua: navigator.userAgent, standalone: !!navigator.standalone }), keepalive: true }); } catch (e) {}
+}
 const item = id => items.find(i => i.id === id);
 const ver = (it, version) => it.versions.find(v => v.version === version) || it.versions[it.versions.length - 1];
 
@@ -1336,7 +1340,7 @@ async function load(force) {
   const sig = JSON.stringify(data);
   if (!force && sig === lastSig) return;
   const oldSel = item(sel.id), oldLen = oldSel ? oldSel.versions.length : 0;
-  items = Array.isArray(data) ? data : data.items; agents = data.agents || []; staleH = data.stale_hours || 12; lastSig = sig;
+  items = Array.isArray(data) ? data : data.items; agents = data.agents || []; if (data.mkey && data.mkey !== mkey) { mkey = data.mkey; if (!force) lastSig = ""; } staleH = data.stale_hours || 12; lastSig = sig;
   renderQueue();
   const it = item(sel.id);
   if (!it) {
@@ -1589,7 +1593,8 @@ function wireVideos(root) {
     const box = vid.parentElement;
     const say = html => { box.querySelector(".vstate")?.remove(); if (html) box.insertAdjacentHTML("beforeend", html); };
     say(`<div class="vstate">Loading video…</div>`);
-    const tryPlay = () => vid.play().then(() => say(""), () => {
+    const tryPlay = () => vid.play().then(() => say(""), err => {
+      clientLog({ what: "play-rejected", name: err && err.name, msg: String(err && err.message).slice(0, 200), src: vid.currentSrc.replace(/k=[^&#]+/, "k=…"), ready: vid.readyState, net: vid.networkState });
       say(`<button class="vplay" aria-label="Play video">▶</button>`);
       const b = box.querySelector(".vplay");
       if (b) b.onclick = e => { e.stopPropagation(); vid.play().then(() => say(""), () => {}); haptic("tick"); };
@@ -1597,10 +1602,12 @@ function wireVideos(root) {
     vid.addEventListener("loadeddata", () => { if (vid.paused) tryPlay(); else say(""); }, { once: true });
     vid.addEventListener("playing", () => say(""));
     vid.addEventListener("error", () => {
+      clientLog({ what: "video-error", code: vid.error && vid.error.code, msg: vid.error && vid.error.message, src: vid.currentSrc.replace(/k=[^&#]+/, "k=…"), ready: vid.readyState, net: vid.networkState });
       say(`<button class="vplay verr">Video did not load. Tap to retry.</button>`);
       box.querySelector(".verr").onclick = e => { e.stopPropagation(); vid.load(); say(`<div class="vstate">Loading video…</div>`); };
     });
     if (vid.readyState >= 2) tryPlay();
+    setTimeout(() => { if (vid.isConnected && vid.readyState < 2) clientLog({ what: "video-stuck", ready: vid.readyState, net: vid.networkState, src: vid.currentSrc.replace(/k=[^&#]+/, "k=…") }); }, 8000);
   });
 }
 function startDeckGifs(root) {
