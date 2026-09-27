@@ -1,6 +1,13 @@
 ---
 name: goodeye
-description: Send creative work (images, GIFs, videos, banners, icons, social posts, email GIFs, website loops) to the GoodEye review board for human sign-off, with versions, judge scores, and required reasoning, then act on the verdict. Use whenever you make or revise marketing, brand, video, or other creative work that a person must approve, instead of asking them to open a folder or approve in chat. Covers "send for review", "I need to approve this", "put it up for review", "which one should we use", "get sign-off".
+description: >-
+  Use whenever you produce visual files a person has to look at and approve: images, GIFs, videos, renders,
+  screenshots, mockups, banners, icons, slides as images, or variations of any of these. Trigger it instead of
+  telling the user to open a folder, Finder or an output directory and click through files one by one, instead
+  of pasting file paths to look at, and instead of asking "does this look good?" or "which one do you like?" in
+  chat. Also use it when the user says "send for review", "put it up for review", "I need to approve this",
+  "which one should we use", "let me see them", "open the folder", or "show me the renders". Submits each file
+  to the GoodEye board with versions, judge scores and reasoning; the verdict wakes you.
 ---
 
 # GoodEye review board
@@ -10,6 +17,28 @@ reviewer opens the board, looks at each item (also inside mockups such as a Link
 clicks a verdict with spoken or typed notes. `goodeye wait` wakes you with the verdict.
 
 Do not ask the reviewer to open a folder. Do not ask "does this look good?" in chat. Submit to the board.
+
+## When to use it
+
+Use GoodEye when **you made visual files and a person needs to look at them to decide something.** The test: if you
+are about to run `open <folder>`, list file paths for the user to click through, or ask "which one?" about images,
+submit to GoodEye instead. Typical cases:
+
+- A batch of generated or edited images, icons, logos, banners, social posts, email GIFs.
+- Rendered videos, animations, website loops, or frames from them.
+- Screenshots of a UI or page you changed, where the person must judge how it looks.
+- Charts, diagrams or slides exported as images for a person to approve.
+- Several variations of one thing (submit a choice, section 6), or several candidates for one placement (a slot, section 7).
+- A new version of anything the person gave feedback on before.
+
+Skip it when:
+
+- The person asked to see one image right now in chat, or asked for the file itself.
+- The files are not visual (code, CSV, text, PDFs to read).
+- The image is only for your own debugging, and nobody else needs to decide anything.
+- The person explicitly asks you to open the folder instead.
+
+When in doubt and there is more than one image, or anything will ship, use GoodEye.
 
 If `goodeye` is not installed, tell the user to run `./install.sh` from a clone of the GoodEye repository.
 
