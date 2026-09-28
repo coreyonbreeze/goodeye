@@ -72,6 +72,45 @@ class GoodEyeTest(unittest.TestCase):
         return self.cli("wait", "--timeout", "5").stdout
 
     # tests
+    def test_persistent_subscription_survives_restart_and_ack_is_separate(self):
+        import uuid
+        thread = str(uuid.uuid4())
+        log = os.path.join(self.tmp.name, "queue.log")
+        fake = self.file("codex", ("#!" + sys.executable + "\n" +
+            "import sys\n" +
+            "with open(" + repr(log) + ", 'a') as f: f.write('queued\\n')\n" +
+            "print('Queued message test-receipt for thread ' + sys.argv[sys.argv.index('--thread')+1])\n").encode())
+        os.chmod(fake, 0o700)
+        self.cli("subscribe", "--project", "Mosaic", "--thread", thread, "--codex", fake)
+        self.cli("submit", self.png, "--id", "watched", "--project", "Mosaic", "--reasoning", self.reason)
+        status, decision = self.post({"id": "watched", "version": "v1", "verdict": "changes", "feedback": "less hopping"})
+        self.assertEqual(status, 200)
+        # A legacy consumer must not steal this event from the durable subscriber.
+        self.assertIn("VERDICT CHANGES", self.wait_output())
+        for _ in range(100):
+            subs = json.loads(self.cli("subscriptions").stdout)
+            if subs[0]["counts"].get("queued"):
+                break
+            time.sleep(.1)
+        else:
+            self.fail("server did not queue subscription notification")
+        delivery = subs[0]["last"]["id"]
+        self.assertIn(decision["decision_id"], self.cli("inbox", "--delivery", delivery).stdout)
+        self.assertIsNone(subs[0]["last"]["acknowledged"])
+        self.server.terminate()
+        self.server.wait(5)
+        self.server = subprocess.Popen(CLI + ["serve", "--port", str(self.port)], env=self.env,
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(1.5)
+        with open(log) as f:
+            self.assertEqual(f.read().splitlines(), ["queued"])
+        self.assertNotEqual(self.cli("ack", "--delivery", delivery, "--thread", str(uuid.uuid4()), ok=False).returncode, 0)
+        self.cli("ack", "--delivery", delivery, "--thread", thread)
+        _, data = self.get("/api/items")
+        state = json.loads(data)
+        self.assertEqual(state["subscriptions"][0]["counts"], {"acknowledged": 1})
+        self.assertEqual(state["items"][0]["status"], "changes")
+
     def test_reasoning_is_required(self):
         bad = self.json("bad.json", {"summary": "s"})
         self.assertNotEqual(self.cli("submit", self.png, "--id", "x", "--reasoning", bad, ok=False).returncode, 0)

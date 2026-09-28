@@ -2,7 +2,7 @@
 
 **A local review board where AI agents submit creative work and you sign off in one click.**
 
-Your coding agent (Claude Code, Codex, or anything with a shell) makes banners, icons, email GIFs, videos and website loops. Instead of opening folders and typing "yes, the third one, but smaller" back into chat, the agent submits each asset to GoodEye. You review it in the browser, inside a mockup of where it will appear, and click **Approve**, **Request changes**, or **Reject**. Talk your notes into the text box. The waiting agent wakes up with your verdict and does the follow-up work.
+Your coding agent (Claude Code, Codex, or anything with a shell) makes banners, icons, email GIFs, videos and website loops. Instead of opening folders and typing "yes, the third one, but smaller" back into chat, the agent submits each asset to GoodEye. You review it in the browser, inside a mockup of where it will appear, and click **Approve**, **Request changes**, or **Reject**. Talk your notes into the text box. A subscribed Codex conversation receives your verdict through its local message queue. Terminal-only agents can use the polling fallback.
 
 ![A banner under review: LinkedIn mockup, judge scores across versions, and the agent's reasoning](docs/board.jpg)
 
@@ -18,7 +18,7 @@ Agents can produce dozens of marketing assets an hour. The slow part is you: fin
 - **Pick between options.** A choice shows options side by side. Rank them (1st, 2nd), note any one ("take the orange from this one"), and send.
 - **Spec checks.** Each file is checked against its placements (LinkedIn banner 1584×396, X header 1500×500, YouTube thumbnail 1280×720, story 9:16, email width and GIF size, favicon shape, hero file size). The agent sees the warnings when it submits; you see them on the card.
 - **Notes that point at a moment.** "Note at 0:03.20" on the timeline adds the time to your note. Hold **C** (or long-press on a phone) to flash the previous version. Your most-used notes come back as one-tap chips.
-- **Know the agent is listening.** The board shows whether an agent is waiting for verdicts. Changes that never came back are flagged, and the agent gets one reminder on its next `goodeye wait`.
+- **Know where feedback went.** The board distinguishes subscribed, pending delivery, queued in Codex, and acknowledged by the agent. A terminal listener is labeled separately. Changes that never came back are flagged, and the agent gets one reminder on its next `goodeye wait`.
 - **One winner per placement.** Put competing candidates in a *slot*. Approving one closes the others, after you confirm.
 
 ![A choice: three icon options ranked, with a note on the second pick](docs/choice.jpg)
@@ -34,7 +34,7 @@ cd goodeye
 goodeye demo && goodeye open
 ```
 
-`./install.sh --project path/to/repo` installs the skill for one project only. The installer uses symlinks, so `git pull` updates both the command and the skill. A running board restarts itself when the code changes.
+`./install.sh --project path/to/repo` installs the skill for one project only. The installer uses symlinks, so `git pull` updates both the command and the skill. Codex can also read this same skill file; its subscription instructions are runtime-specific. A running board restarts itself when the code changes.
 
 ## Use it with your agent
 
@@ -99,6 +99,27 @@ Environment: `GOODEYE_HOME` (store, default `~/.goodeye`), `GOODEYE_PORT` (defau
 Metrics with the same `group` share one chart. `bar` draws the pass line and flags scores below it. A flat `{"clarity": 3.2}` also works.
 
 **Options** for a choice: see [examples/options.json](examples/options.json).
+
+## Persistent Codex notifications
+
+Subscribe from the Codex conversation that owns the project, before submitting assets:
+
+```bash
+goodeye subscribe --project Mosaic        # uses CODEX_THREAD_ID
+# Or: goodeye subscribe --project Mosaic --thread <exact-thread-UUID>
+goodeye subscription-test --project Mosaic
+goodeye subscriptions
+```
+
+Requires an installed Codex CLI with `codex queue` (tested with 0.157.1). See the [official queue guidance](https://developers.openai.com/blog/mastering-codex-remote-for-engineering). GoodEye calls it locally with the existing thread UUID, without a shell, model override, or separate API key. An optional `--codex /path/to/codex` selects the executable; `--remote unix:///path/to/socket` selects a local daemon. Subscription configuration is CLI-only; a phone or web request cannot configure commands.
+
+GoodEye's server maintains a durable SQLite outbox. It batches related verdicts, retries failed sends with backoff, and recovers after a restart. Queue acceptance and agent receipt are separate: the notification tells the agent to read `goodeye inbox --delivery ID` and acknowledge with `goodeye ack --delivery ID` (including the supplied store path). Acknowledgment never grants approval or claims the work is finished. Inspect a stuck delivery with `goodeye inbox`; `goodeye retry-delivery --delivery ID` explicitly retries the same ID.
+
+New subscriptions start with future decisions. Re-registering the same thread preserves its cursor. One project has one active owner; use `goodeye unsubscribe --project Mosaic` before transferring ownership. Stored decisions and delivery history remain. Legacy `wait` consumers cannot steal subscription events.
+
+Delivery is **at least once**: a crash after queue acceptance but before saving its receipt can repeat the wake message. Stable delivery and decision IDs let the agent deduplicate actions. A queued notification waits for the current Codex response to finish; verify a test in the target conversation before claiming wake-up works. GoodEye and the local Codex daemon must be available; outages leave pending feedback for retry. Successful queue acceptance is not proof the agent has read it.
+
+`goodeye wait` remains available for other runtimes. It prints verdicts and exits; it cannot promise to wake an idle agent by itself.
 
 ## Verdicts
 

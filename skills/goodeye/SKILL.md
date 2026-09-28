@@ -7,14 +7,14 @@ description: >-
   of pasting file paths to look at, and instead of asking "does this look good?" or "which one do you like?" in
   chat. Also use it when the user says "send for review", "put it up for review", "I need to approve this",
   "which one should we use", "let me see them", "open the folder", or "show me the renders". Submits each file
-  to the GoodEye board with versions, judge scores and reasoning; the verdict wakes you.
+  to the GoodEye board with versions, judge scores and reasoning; a persistent subscription queues the verdict into the subscribed Codex conversation.
 ---
 
 # GoodEye review board
 
 GoodEye is a local review board at http://localhost:4400. You submit work with the `goodeye` command. The
 reviewer opens the board, looks at each item (also inside mockups such as a LinkedIn banner or an email), and
-clicks a verdict with spoken or typed notes. `goodeye wait` wakes you with the verdict.
+clicks a verdict with spoken or typed notes. `goodeye subscribe` routes new feedback to an existing Codex conversation. A terminal `wait` alone does not guarantee an agent wake-up.
 
 Do not ask the reviewer to open a folder. Do not ask "does this look good?" in chat. Submit to the board.
 
@@ -92,21 +92,34 @@ goodeye submit <file> --id <stable-id> --title "<human title>" --project <Projec
   or file weight). Fix it and resubmit before the reviewer looks, or explain in `reasoning` why it is right.
 - After a batch, tell the reviewer in one line how many items are up, with the link http://localhost:4400.
 
-## 4. Wait for the verdict
+## 4. Subscribe to verdicts (Codex)
 
-Right after you submit, start this in the background (Claude Code: the Bash tool with `run_in_background: true`):
+Before leaving work for review, register this exact conversation:
+
+```bash
+goodeye subscribe --project <Project>
+goodeye subscription-test --project <Project>
+goodeye subscriptions
+```
+
+`subscribe` uses `CODEX_THREAD_ID`, or pass `--thread <exact UUID>`. It stores one owner per project and uses the installed `codex queue` command. No model override, new thread, separate model API key, or periodic model polling. Requires a Codex CLI that supports `queue`.
+
+- Subscribe **before submitting** new work. A new subscription starts with future verdicts; it does not replay historical decisions. Registering the same thread again preserves its cursor. Use `goodeye unsubscribe --project <Project>` before explicitly changing owners.
+- The board server runs the delivery worker. It keeps delivery state across server restarts and retries failed queue requests. Codex handles queued prompts after the current response. Do not claim automatic wake-up from a terminal listener.
+- The subscription test is a notification only, never an asset or approval. Confirm receipt in the target conversation before claiming the integration is verified. A test queued during an active turn may arrive after that turn finishes.
+- When notified, run the supplied `goodeye inbox --store <path> --delivery <id>` command. Read every decision. Then run the supplied `goodeye ack --store <path> --delivery <id>` command. The subscribed `CODEX_THREAD_ID` is required (or `--thread <UUID>`).
+- **Queue acceptance is not agent receipt. Receipt is not completion or approval.** `subscriptions` and the board distinguish pending, queued, and acknowledged deliveries.
+- Deliveries can repeat after a crash or ambiguous timeout. Deduplicate actions using `decision_id` and the project's decision records. Never infer approval from a notification or acknowledgment.
+- If Codex accepted a delivery but it remains unacknowledged, inspect `goodeye inbox` and `goodeye subscriptions`. Use `goodeye retry-delivery --delivery <id>` for an explicit retry with the same ID. Do not start another competing subscriber.
+- Keep one subscription per project. Do not run `goodeye wait` as the Codex wake-up mechanism alongside it. Subscription delivery does not consume or depend on legacy `delivered.json`.
+
+### Other agents / terminal fallback
 
 ```bash
 goodeye wait --project <Project>
 ```
 
-It exits when the reviewer's verdict arrives, and your session wakes with the output. Keep working meanwhile.
-
-- Keep **exactly one** `goodeye wait` running per project while anything is pending. A verdict goes to whichever
-  wait sees it first, so two waits (two sessions, or a second one you forgot) split the verdicts and one session
-  never hears about some of them. One running wait is also what shows the reviewer "Agent listening".
-- After you handle the output, start `goodeye wait` again if items are still pending (`goodeye status` lists them).
-- The reviewer has a few seconds to undo a verdict, so it arrives a few seconds after the click. That is normal.
+This prints new verdicts and exits. It only wakes an agent if that agent's runtime explicitly resumes on background process completion. Otherwise it must be polled during active work. Keep exactly one legacy waiter per project, handle every returned verdict, then restart it. The board labels this as a terminal listener, not a confirmed agent subscription.
 
 ## 5. Act on the verdict
 

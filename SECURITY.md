@@ -22,3 +22,7 @@ GoodEye is a local tool. By default the board listens on `127.0.0.1` only. Phone
 ## Reporting a problem
 
 Open a private security advisory on this repository (Security > Report a vulnerability). Please do not open a public issue for a vulnerability.
+
+## Local agent subscriptions
+
+Subscriptions can be created only by the local CLI, not an HTTP or phone request. The delivery database is mode0600 and remains in the local store. Notifications use argv-based `codex queue` with an exact thread UUID and optional local Unix-socket endpoint. No shell, model override, new conversation, or approval-policy override is used. Feedback text is not interpolated into commands or wake messages; the agent reads it as saved review data. Queue acceptance and receipt acknowledgments cannot create approval decisions. Delivery retries may repeat a notification; consumers must deduplicate by decision ID. Only the owning thread can acknowledge through the normal CLI (local users controlling the store remain trusted).

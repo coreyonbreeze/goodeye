@@ -609,7 +609,7 @@ const FILTERS = [["pending", "Review"], ["changes", "Changes"], ["approved", "Ap
 const CTX = { "linkedin-banner": "LinkedIn banner", "linkedin-company-cover": "LinkedIn company cover", "linkedin-post": "LinkedIn post", "x-post": "X post", "x-banner": "X profile header", "instagram-post": "Instagram post",
   "instagram-story": "Instagram story", "email": "Email", "website-hero": "Website hero", "browser-tab": "Browser tab",
   "youtube-thumbnail": "YouTube thumbnail", "phone": "Phone" };
-let agents = [], staleH = 12;
+let agents = [], subscriptions = [], staleH = 12;
 let started = false, items = [], filter = "pending", sel = { id: null, version: null, view: "asset", compare: false }, lastSig = "";
 
 let mkey = "";   // read-only media key, sent only to signed-in phones
@@ -748,10 +748,19 @@ function wireChips(root, ta) {
   });
 }
 function agentHtml(project) {
+  const subs = subscriptions.filter(x => !project || x.project === project);
+  if (subs.length) return subs.map(s => {
+    const c = s.counts || {}, last = s.last;
+    const label = c.pending ? "Delivery pending; failed sends retry automatically"
+      : c.queued ? "Queued in Codex; waiting for agent acknowledgment"
+      : last?.acknowledged ? "Agent acknowledged receipt" : "Codex subscribed for future feedback";
+    return `<div class="agentline ${c.pending ? "" : "on"}"><i></i>${esc(s.project)}: ${esc(label)}</div>`;
+  }).join("");
   const a = agents.filter(x => !project || !x.project || x.project === project);
-  return a.length ? `<div class="agentline on"><i></i>Agent waiting${a[0].project ? ` (${esc(a[0].project)})` : ""}: verdicts are acted on now</div>`
-                  : `<div class="agentline"><i></i>No agent waiting: verdicts queue until one runs goodeye wait</div>`;
+  return a.length ? `<div class="agentline"><i></i>Terminal listener waiting; automatic agent wake is not configured</div>`
+    : `<div class="agentline"><i></i>No agent subscription; feedback is saved for later</div>`;
 }
+
 function reopenHtml(it) {
   return ["rejected", "not_chosen"].includes(it.status) ? `<div class="filled">${STATUS[it.status]}. Changed your mind?<button data-reopen>Reopen for review</button></div>` : "";
 }
@@ -1340,7 +1349,7 @@ async function load(force) {
   const sig = JSON.stringify(data);
   if (!force && sig === lastSig) return;
   const oldSel = item(sel.id), oldLen = oldSel ? oldSel.versions.length : 0;
-  items = Array.isArray(data) ? data : data.items; agents = data.agents || []; if (data.mkey && data.mkey !== mkey) { mkey = data.mkey; if (!force) lastSig = ""; } staleH = data.stale_hours || 12; lastSig = sig;
+  items = Array.isArray(data) ? data : data.items; agents = data.agents || []; subscriptions = data.subscriptions || []; if (data.mkey && data.mkey !== mkey) { mkey = data.mkey; if (!force) lastSig = ""; } staleH = data.stale_hours || 12; lastSig = sig;
   renderQueue();
   const it = item(sel.id);
   if (!it) {
@@ -1433,7 +1442,7 @@ function renderDeck() {
   if (!on || dragging) return;
   document.body.style.setProperty("--tbh", $("#topbar").offsetHeight + "px");
   const cards = deckCards();
-  $("#qpos").innerHTML = agents.length ? `<span class="apill on">● Agent listening</span>` : `<span class="apill off">○ No agent</span>`;
+  $("#qpos").innerHTML = subscriptions.length ? `<span class="apill on">● Agent subscribed</span>` : `<span class="apill off">○ No wake subscription</span>`;
   const top = cards[0];
   if (top && deckTop === top.id + "@" + top.versions[top.versions.length - 1].version && $("#deck .card2")) return;
   deckTop = top ? top.id + "@" + top.versions[top.versions.length - 1].version : null;

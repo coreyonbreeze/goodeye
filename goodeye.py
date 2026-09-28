@@ -15,9 +15,9 @@
 
 Store: $GOODEYE_HOME (default ~/.goodeye). Port: $GOODEYE_PORT (default 4400). Python 3.9+, standard library only.
 """
-import argparse, atexit, signal, urllib.request, datetime, threading, http.server, http.cookies, webbrowser, zlib, struct, secrets, hmac, gzip, hashlib, io, json, mimetypes, os, re, shutil, socket, subprocess, sys, time, urllib.parse, uuid
+import argparse, atexit, signal, sqlite3, urllib.request, datetime, threading, http.server, http.cookies, webbrowser, zlib, struct, secrets, hmac, gzip, hashlib, io, json, mimetypes, os, re, shutil, socket, subprocess, sys, time, urllib.parse, uuid
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 HOME = os.path.expanduser(os.environ.get("GOODEYE_HOME", "~/.goodeye"))
 ASSETS = os.path.join(HOME, "assets")
 DECISIONS = os.path.join(HOME, "decisions.jsonl")
@@ -28,6 +28,7 @@ REMINDED = os.path.join(HOME, "reminded.json")
 TOKEN_FILE = os.path.join(HOME, "phone-token")
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, HERE)
+from goodeye_delivery import DeliveryStore
 PORT = int(os.environ.get("GOODEYE_PORT", "4400"))
 URL = f"http://localhost:{PORT}"
 CONTEXTS = ["linkedin-banner", "linkedin-company-cover", "linkedin-post", "x-banner", "x-post", "instagram-post", "instagram-story", "email",
@@ -498,6 +499,54 @@ def cmd_submit(a):
     print("next: run `goodeye wait` in the background to receive the verdict")
 
 
+def delivery_store():
+    return DeliveryStore(HOME)
+
+
+def delivery_worker():
+    store = delivery_store()
+    while True:
+        try:
+            with LOCK:
+                store.ingest(decisions())
+            store.make_batches()
+            store.dispatch_one()
+        except (OSError, ValueError, sqlite3.Error):
+            print("agent delivery store temporarily unavailable; retrying", flush=True)
+        time.sleep(1)
+
+
+def cmd_subscription(a):
+    store = DeliveryStore(getattr(a, "store", None) or HOME)
+    try:
+        if a.cmd == "subscribe":
+            store.ingest(decisions())
+            result = store.subscribe(a.project, a.thread or os.environ.get("CODEX_THREAD_ID"), a.codex, a.remote)
+            ensure_server()
+            print(json.dumps({"project": result["project"], "thread": result["thread"], "subscription": result["id"]}))
+            print("Subscribed to future decisions. Run goodeye subscription-test --project " + repr(a.project) + " to verify receipt.")
+        elif a.cmd == "unsubscribe":
+            store.unsubscribe(a.project)
+            print("Unsubscribed. Saved decisions and delivery history retained.")
+        elif a.cmd == "subscriptions":
+            print(json.dumps(store.status(), indent=2))
+        elif a.cmd == "subscription-test":
+            ensure_server()
+            print("Test delivery: " + store.probe(a.project))
+        elif a.cmd == "inbox":
+            print(json.dumps(store.inbox(a.delivery), indent=2))
+            print("next: acknowledge receipt with goodeye ack, then act on each verdict using the GoodEye skill. A probe needs no asset changes.")
+        elif a.cmd == "ack":
+            store.acknowledge(a.delivery, a.thread or os.environ.get("CODEX_THREAD_ID"))
+            print("Receipt acknowledged. This is not an approval or completion record.")
+        elif a.cmd == "retry-delivery":
+            store.retry(a.delivery)
+            ensure_server()
+            print("Delivery queued for retry with the same ID.")
+    except ValueError as exc:
+        die(str(exc))
+
+
 def cmd_wait(a):
     os.makedirs(AGENTS, exist_ok=True)
     mine = os.path.join(AGENTS, f"{os.getpid()}.json")
@@ -862,7 +911,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.send(200, f.read(), "text/html; charset=utf-8", csp=BOARD_CSP)
         if path == "/api/items":
             extra = {"mkey": media_key()} if LAN and not self.host_is_local() and self.has_token() else {}
-            return self.send(200, {"items": all_items(), "agents": agents_alive(), "stale_hours": stale_hours(), **extra})
+            return self.send(200, {"items": all_items(), "agents": agents_alive(), "subscriptions": delivery_store().status(), "stale_hours": stale_hours(), **extra})
         if path.startswith("/files/"):
             rel = urllib.parse.unquote(path[len("/files/"):])
             full = os.path.realpath(os.path.join(ASSETS, rel))
@@ -993,6 +1042,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             with open(DECISIONS, "a") as f:
                 for r in rows:
                     f.write(json.dumps(r) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
         self.send(200, d)
 
 
@@ -1090,7 +1141,7 @@ def decide_local(asset_id, version, verdict, feedback):
 
 def watch_code():
     """Restart the server in place when this file changes (git pull), so an update never leaves a stale server."""
-    watched = [os.path.realpath(__file__), os.path.join(HERE, "goodeye_qr.py")]
+    watched = [os.path.realpath(__file__), os.path.join(HERE, "goodeye_qr.py"), os.path.join(HERE, "goodeye_delivery.py")]
     stamp = lambda: [os.path.getmtime(p) if os.path.exists(p) else 0 for p in watched] + [bool(load_config().get("lan"))]
     start = stamp()
     while True:
@@ -1113,6 +1164,7 @@ def cmd_serve(a):
     # Loopback only unless phone mode is on. In phone mode every non-local request needs the token cookie.
     srv = http.server.ThreadingHTTPServer(("0.0.0.0" if LAN else "127.0.0.1", a.port), Handler)
     print(f"GoodEye board on http://localhost:{a.port}  (store: {HOME}, phone mode {'on' if LAN else 'off'})", flush=True)
+    threading.Thread(target=delivery_worker, daemon=True).start()
     srv.serve_forever()
 
 
@@ -1241,7 +1293,27 @@ def main():
     sl.add_argument("key")
     sl.add_argument("ids", nargs="+")
     sl.add_argument("--label")
+    su = sub.add_parser("subscribe", help="persistently wake an existing Codex thread on future project verdicts")
+    su.add_argument("--project", required=True)
+    su.add_argument("--thread", help="exact UUID; defaults to CODEX_THREAD_ID")
+    su.add_argument("--codex", default="codex", help="local Codex executable supporting queue")
+    su.add_argument("--remote", help="optional local unix:// endpoint")
+    us = sub.add_parser("unsubscribe")
+    us.add_argument("--project", required=True)
+    sub.add_parser("subscriptions", help="queued versus agent-acknowledged deliveries")
+    probe = sub.add_parser("subscription-test", help="send a receipt test without changing assets or decisions")
+    probe.add_argument("--project", required=True)
+    for name in ("inbox", "ack", "retry-delivery"):
+        parser = sub.add_parser(name)
+        parser.add_argument("--delivery", required=True)
+        if name in ("inbox", "ack"):
+            parser.add_argument("--store", help="store path supplied by the notification")
+        if name == "ack":
+            parser.add_argument("--thread", help="subscribed UUID; defaults to CODEX_THREAD_ID")
     a = p.parse_args()
+    if a.cmd in ("subscribe", "unsubscribe", "subscriptions", "subscription-test", "inbox", "ack", "retry-delivery"):
+        cmd_subscription(a)
+        return
     if a.cmd == "open":
         ensure_server()
         webbrowser.open(URL)
