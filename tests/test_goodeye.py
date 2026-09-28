@@ -82,7 +82,9 @@ class GoodEyeTest(unittest.TestCase):
             "print('Queued message test-receipt for thread ' + sys.argv[sys.argv.index('--thread')+1])\n").encode())
         os.chmod(fake, 0o700)
         self.cli("subscribe", "--project", "Mosaic", "--thread", thread, "--codex", fake)
-        self.cli("submit", self.png, "--id", "watched", "--project", "Mosaic", "--reasoning", self.reason)
+        submitted = self.cli("submit", self.png, "--id", "watched", "--project", "Mosaic", "--reasoning", self.reason)
+        self.assertIn("subscription active", submitted.stdout)
+        self.assertNotIn("run `goodeye wait`", submitted.stdout)
         status, decision = self.post({"id": "watched", "version": "v1", "verdict": "changes", "feedback": "less hopping"})
         self.assertEqual(status, 200)
         # A legacy consumer must not steal this event from the durable subscriber.

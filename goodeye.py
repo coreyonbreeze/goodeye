@@ -496,7 +496,13 @@ def cmd_submit(a):
     if meta["checks"]:
         print("  The reviewer sees these warnings. Fix and resubmit now if the placement is right, or explain in reasoning.")
     notify_new(meta)
-    print("next: run `goodeye wait` in the background to receive the verdict")
+    subscribed = any(s["project"] == (meta.get("project") or "") for s in delivery_store().status())
+    if subscribed:
+        print("next: Codex subscription active. Feedback will queue to its registered conversation; acknowledge it after reading inbox.")
+    elif os.environ.get("CODEX_THREAD_ID"):
+        print("next: run `goodeye subscribe --project PROJECT` for this conversation, then verify with `goodeye subscription-test --project PROJECT`.")
+    else:
+        print("next: use a persistent subscription, or `goodeye wait` as a terminal fallback (no automatic wake guarantee).")
 
 
 def delivery_store():
