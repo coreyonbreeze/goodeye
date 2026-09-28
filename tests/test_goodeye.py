@@ -220,6 +220,42 @@ class GoodEyeTest(unittest.TestCase):
         self.assertEqual(self.post(body, {"Host": lan, "Cookie": jar})[0], 403)      # remote writes need Origin
         self.assertEqual(self.post(body, {"Host": lan, "Cookie": jar, "Origin": f"http://{lan}"})[0], 200)
 
+    def test_video_ranges_and_document_sandbox(self):
+        # Safari probes two bytes, then requests the movie or its trailing metadata.
+        data = b"\x00\x00\x00\x18ftypmp42" + bytes(range(256)) * 4
+        directory = os.path.join(self.env["GOODEYE_HOME"], "assets", "media", "v1")
+        os.makedirs(directory)
+        for name in ("clip.mp4", "clip.m4v", "clip.webm", "clip.mov", "drawing.svg", "page.html"):
+            with open(os.path.join(directory, name), "wb") as f:
+                f.write(data)
+        def request(name, byte_range=None):
+            c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+            c.request("GET", "/files/media/v1/" + name, headers={"Range": byte_range} if byte_range else {})
+            r = c.getresponse()
+            result = (r.status, dict(r.getheaders()), r.read())
+            c.close()
+            return result
+        for name in ("clip.mp4", "clip.m4v", "clip.webm", "clip.mov"):
+            for requested, expected in ((None, data), ("bytes=0-1", data[:2]),
+                                        ("bytes=12-", data[12:]), ("bytes=-16", data[-16:])):
+                status, headers, body = request(name, requested)
+                self.assertEqual(status, 206 if requested else 200)
+                self.assertEqual(body, expected)
+                self.assertEqual(int(headers["Content-Length"]), len(expected))
+                self.assertEqual(headers["Accept-Ranges"], "bytes")
+                self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
+                self.assertTrue(headers["Content-Type"].startswith("video/"))
+                self.assertNotIn("Content-Security-Policy", headers)
+                if requested == "bytes=0-1":
+                    self.assertEqual(headers["Content-Range"], f"bytes 0-1/{len(data)}")
+            self.assertEqual(request(name, f"bytes={len(data)}-")[0], 416)
+        for name in ("drawing.svg", "page.html"):
+            for requested in (None, "bytes=0-1"):
+                _, headers, _ = request(name, requested)
+                self.assertIn("sandbox;", headers["Content-Security-Policy"])
+                self.assertIn("default-src 'none'", headers["Content-Security-Policy"])
+                self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
+
     def test_unchanged_items_cost_a_304(self):
         self.cli("submit", self.png, "--id", "banner", "--reasoning", self.reason)
         c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)

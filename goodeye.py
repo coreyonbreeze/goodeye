@@ -17,7 +17,7 @@ Store: $GOODEYE_HOME (default ~/.goodeye). Port: $GOODEYE_PORT (default 4400). P
 """
 import argparse, atexit, signal, sqlite3, urllib.request, datetime, threading, http.server, http.cookies, webbrowser, zlib, struct, secrets, hmac, gzip, hashlib, io, json, mimetypes, os, re, shutil, socket, subprocess, sys, time, urllib.parse, uuid
 
-__version__ = "0.7.0"
+__version__ = "0.7.1"
 HOME = os.path.expanduser(os.environ.get("GOODEYE_HOME", "~/.goodeye"))
 ASSETS = os.path.join(HOME, "assets")
 DECISIONS = os.path.join(HOME, "decisions.jsonl")
@@ -950,8 +950,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         else:
             self.send_response(200)
         self.common_headers()
-        # Uploaded files never run code: an SVG opened directly gets a sandboxed, script-free origin.
-        self.send_header("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'")
+        # WebKit can apply document sandbox restrictions to its native video player.
+        # These fixed video MIME types use the media decoder (with nosniff above).
+        # Keep the script-free sandbox for SVG, HTML, and every other uploaded type.
+        if ctype not in ("video/mp4", "video/webm", "video/quicktime"):
+            self.send_header("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'")
         self.send_header("Cache-Control", "private, max-age=31536000, immutable")   # versions are frozen, so files never change
         self.send_header("Content-Type", ctype)
         self.send_header("Accept-Ranges", "bytes")

@@ -613,7 +613,13 @@ let agents = [], subscriptions = [], staleH = 12;
 let started = false, items = [], filter = "pending", sel = { id: null, version: null, view: "asset", compare: false }, lastSig = "";
 
 let mkey = "";   // read-only media key, sent only to signed-in phones
-const fileUrl = v => `/files/${v.dir.split("/").map(encodeURIComponent).join("/")}/${v.file.split("/").map(encodeURIComponent).join("/")}${mkey ? `?k=${mkey}` : ""}`;
+const fileUrl = v => {
+  // Refresh old immutable video responses that carried document sandbox headers.
+  const query = new URLSearchParams();
+  if (mkey) query.set("k", mkey);
+  if (v.kind === "video") query.set("player", "2");
+  return `/files/${v.dir.split("/").map(encodeURIComponent).join("/")}/${v.file.split("/").map(encodeURIComponent).join("/")}${query.size ? `?${query}` : ""}`;
+};
 function clientLog(ev) {           // phone troubleshooting: what the video player reports goes to ~/.goodeye/client.log
   try { fetch("/api/clientlog", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...ev, ua: navigator.userAgent, standalone: !!navigator.standalone }), keepalive: true }); } catch (e) {}
 }
@@ -1600,22 +1606,30 @@ function wireVideos(root) {
   root.querySelectorAll("video.dvid").forEach(vid => {
     if (vid._wired) return; vid._wired = true;
     const box = vid.parentElement;
-    const say = html => { box.querySelector(".vstate")?.remove(); if (html) box.insertAdjacentHTML("beforeend", html); };
+    const say = html => { box.querySelectorAll(".vstate, .vplay").forEach(el => el.remove()); if (html) box.insertAdjacentHTML("beforeend", html); };
     say(`<div class="vstate">Loading video…</div>`);
+    const showError = () => {
+      say(`<button class="vplay verr">Video did not load. Tap to retry.</button>`);
+      box.querySelector(".verr").onclick = e => {
+        e.stopPropagation(); vid.load(); say(`<div class="vstate">Loading video…</div>`); tryPlay();
+      };
+    };
     const tryPlay = () => vid.play().then(() => say(""), err => {
+      if (!vid.isConnected || err?.name === "AbortError") return;
       clientLog({ what: "play-rejected", name: err && err.name, msg: String(err && err.message).slice(0, 200), src: vid.currentSrc.replace(/k=[^&#]+/, "k=…"), ready: vid.readyState, net: vid.networkState });
+      if (vid.error) return showError();
       say(`<button class="vplay" aria-label="Play video">▶</button>`);
       const b = box.querySelector(".vplay");
-      if (b) b.onclick = e => { e.stopPropagation(); vid.play().then(() => say(""), () => {}); haptic("tick"); };
+      if (b) b.onclick = e => { e.stopPropagation(); tryPlay(); haptic("tick"); };
     });
-    vid.addEventListener("loadeddata", () => { if (vid.paused) tryPlay(); else say(""); }, { once: true });
+    vid.addEventListener("loadeddata", () => { if (vid.paused) tryPlay(); else say(""); });
     vid.addEventListener("playing", () => say(""));
     vid.addEventListener("error", () => {
       clientLog({ what: "video-error", code: vid.error && vid.error.code, msg: vid.error && vid.error.message, src: vid.currentSrc.replace(/k=[^&#]+/, "k=…"), ready: vid.readyState, net: vid.networkState });
-      say(`<button class="vplay verr">Video did not load. Tap to retry.</button>`);
-      box.querySelector(".verr").onclick = e => { e.stopPropagation(); vid.load(); say(`<div class="vstate">Loading video…</div>`); };
+      showError();
     });
-    if (vid.readyState >= 2) tryPlay();
+    // Call within a tap when possible; restricted preload may never emit loadeddata.
+    tryPlay();
     setTimeout(() => { if (vid.isConnected && vid.readyState < 2) clientLog({ what: "video-stuck", ready: vid.readyState, net: vid.networkState, src: vid.currentSrc.replace(/k=[^&#]+/, "k=…") }); }, 8000);
   });
 }
