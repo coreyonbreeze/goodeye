@@ -1,5 +1,5 @@
 """End-to-end tests: real CLI, real server, temporary store. Run: python3 -m unittest discover tests"""
-import http.client, json, os, socket, subprocess, sys, tempfile, time, unittest
+import http.client, json, os, re, socket, subprocess, sys, tempfile, time, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLI = [sys.executable, os.path.join(ROOT, "goodeye.py")]
@@ -112,6 +112,52 @@ class GoodEyeTest(unittest.TestCase):
         state = json.loads(data)
         self.assertEqual(state["subscriptions"][0]["counts"], {"acknowledged": 1})
         self.assertEqual(state["items"][0]["status"], "changes")
+
+    def test_two_sessions_split_work_by_claims(self):
+        for name in ("video", "brand"):
+            self.cli("watch", "--project", "Mosaic", "--as", name, "--runtime", "pull")
+        out = self.cli("submit", self.png, "--id", "film-01", "--project", "Mosaic", "--reasoning", self.reason, "--as", "video").stdout
+        self.assertIn("claimed film-01 for video", out)
+        self.assertIn("goes to its owner video", out)
+        self.cli("submit", self.png, "--id", "logo", "--project", "Mosaic", "--reasoning", self.reason)   # unclaimed
+        self.post({"id": "film-01", "version": "v1", "verdict": "changes", "feedback": "tighter"})
+        self.post({"id": "logo", "version": "v1", "verdict": "changes", "feedback": "bolder"})
+        video = self.cli("wait", "--project", "Mosaic", "--as", "video", "--timeout", "10").stdout
+        brand = self.cli("wait", "--project", "Mosaic", "--as", "brand", "--timeout", "10").stdout
+        self.assertIn("film-01@v1", video)
+        self.assertIn("owner: you", video)
+        self.assertIn("logo@v1", video)
+        self.assertNotIn("film-01", brand)
+        self.assertIn("UNCLAIMED", brand)
+        self.cli("claim", "logo", "--project", "Mosaic", "--as", "brand")
+        lost = self.cli("claim", "logo", "--project", "Mosaic", "--as", "video", ok=False)
+        self.assertNotEqual(lost.returncode, 0)
+        self.assertIn("claimed by brand", lost.stderr)
+        delivery = re.search(r"ack: goodeye ack --delivery (\w+) --as video", video).group(1)
+        self.assertNotEqual(self.cli("ack", "--delivery", delivery, "--as", "brand", ok=False).returncode, 0)
+        self.cli("ack", "--delivery", delivery, "--as", "video")
+        brief = self.cli("brief", "--project", "Mosaic", "--as", "newbie").stdout
+        self.assertIn("video (pull)", brief)
+        self.assertIn("owner: brand", brief)
+        self.assertIn("goodeye handoff --project Mosaic --from", brief)
+        state = json.loads(self.get("/api/items")[1])
+        self.assertEqual(sorted(c["owner"] for c in state["claims"]), ["brand", "video"])
+        self.cli("handoff", "--project", "Mosaic", "--from", "video", "--to", "video2", "--runtime", "pull")
+        self.assertIn("owner: video2", self.cli("brief", "--project", "Mosaic").stdout)
+
+    def test_hold_mutes_reminders(self):
+        with open(os.path.join(self.env["GOODEYE_HOME"], "config.json"), "w") as f:
+            json.dump({"stale_hours": 0}, f)
+        self.cli("watch", "--project", "Demo", "--as", "me", "--runtime", "pull")
+        self.cli("submit", self.png, "--id", "paused", "--project", "Demo", "--reasoning", self.reason, "--as", "me")
+        self.post({"id": "paused", "version": "v1", "verdict": "changes", "feedback": "later"})
+        self.cli("wait", "--project", "Demo", "--as", "me", "--timeout", "10")      # delivers the verdict
+        self.cli("hold", "paused", "--project", "Demo", "--note", "reviewer paused this")
+        quiet = self.cli("wait", "--project", "Demo", "--as", "me", "--timeout", "2", ok=False).stdout
+        self.assertNotIn("REMINDER", quiet)
+        self.assertIn("ON HOLD: reviewer paused this", self.cli("brief", "--project", "Demo").stdout)
+        self.cli("unhold", "paused", "--project", "Demo")
+        self.assertIn("REMINDER", self.cli("wait", "--project", "Demo", "--as", "me", "--timeout", "2").stdout)
 
     def test_reasoning_is_required(self):
         bad = self.json("bad.json", {"summary": "s"})

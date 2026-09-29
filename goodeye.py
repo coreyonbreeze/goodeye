@@ -15,9 +15,9 @@
 
 Store: $GOODEYE_HOME (default ~/.goodeye). Port: $GOODEYE_PORT (default 4400). Python 3.9+, standard library only.
 """
-import argparse, atexit, signal, sqlite3, urllib.request, datetime, threading, http.server, http.cookies, webbrowser, zlib, struct, secrets, hmac, gzip, hashlib, io, json, mimetypes, os, re, shutil, socket, subprocess, sys, time, urllib.parse, uuid
+import argparse, atexit, shlex, signal, sqlite3, urllib.request, datetime, threading, http.server, http.cookies, webbrowser, zlib, struct, secrets, hmac, gzip, hashlib, io, json, mimetypes, os, re, shutil, socket, subprocess, sys, time, urllib.parse, uuid
 
-__version__ = "0.7.1"
+__version__ = "0.8.0"
 HOME = os.path.expanduser(os.environ.get("GOODEYE_HOME", "~/.goodeye"))
 ASSETS = os.path.join(HOME, "assets")
 DECISIONS = os.path.join(HOME, "decisions.jsonl")
@@ -496,13 +496,26 @@ def cmd_submit(a):
     if meta["checks"]:
         print("  The reviewer sees these warnings. Fix and resubmit now if the placement is right, or explain in reasoning.")
     notify_new(meta)
-    subscribed = any(s["project"] == (meta.get("project") or "") for s in delivery_store().status())
-    if subscribed:
-        print("next: Codex subscription active. Feedback will queue to its registered conversation; acknowledge it after reading inbox.")
+    project = meta.get("project") or ""
+    store = delivery_store()
+    watchers = store.status(project) if project else []
+    me = agent_name(a)
+    if me and project and store.watcher(project, me):
+        try:
+            store.claim(project, a.id, me)
+            print(f"claimed {a.id} for {me}: its verdicts go to {me} only.")
+        except ValueError as exc:
+            print(f"  not claimed: {exc}")
+    if watchers:
+        names = ", ".join(f"{w['name']} ({w['runtime']})" for w in watchers)
+        owner, _, active = store.owner(project, a.id)
+        route = f"its owner {owner}" if owner and active else "every watcher (unclaimed; first claim wins)"
+        print(f"next: subscription active. Watchers: {names}. Feedback on {a.id} goes to {route}.")
     elif os.environ.get("CODEX_THREAD_ID"):
-        print("next: run `goodeye subscribe --project PROJECT` for this conversation, then verify with `goodeye subscription-test --project PROJECT`.")
+        print("next: run `goodeye watch --project PROJECT --as NAME` for this conversation, then verify with `goodeye subscription-test --project PROJECT`.")
     else:
-        print("next: use a persistent subscription, or `goodeye wait` as a terminal fallback (no automatic wake guarantee).")
+        print("next: run `goodeye watch --project PROJECT --as NAME`, then `goodeye wait --project PROJECT --as NAME` in the background. "
+              "Plain `goodeye wait` also works as a terminal fallback (no automatic wake guarantee).")
 
 
 def delivery_store():
@@ -522,56 +535,237 @@ def delivery_worker():
         time.sleep(1)
 
 
+def agent_name(a):
+    return getattr(a, "as_", None) or os.environ.get("GOODEYE_AGENT") or None
+
+
+def session_identity(a):
+    """(runtime, thread, default name) for this agent session. Codex threads get a push; everything else pulls."""
+    runtime = getattr(a, "runtime", None)
+    codex_thread = getattr(a, "thread", None) or os.environ.get("CODEX_THREAD_ID")
+    if not runtime:
+        runtime = "codex" if os.environ.get("CODEX_THREAD_ID") else "pull"
+    if runtime == "codex":
+        thread = codex_thread
+        default = "codex-" + (thread or "")[:8] if thread else None
+    else:
+        thread = getattr(a, "thread", None) or os.environ.get("CLAUDE_CODE_SESSION_ID") or ""
+        default = ("claude-" + thread[:8]) if os.environ.get("CLAUDE_CODE_SESSION_ID") and thread else None
+    return runtime, thread, agent_name(a) or default
+
+
+def wait_command(project, name):
+    return f"goodeye wait --project {shlex.quote(project)} --as {shlex.quote(name)}"
+
+
+def print_verdict(d):
+    meta = read_json(os.path.join(ASSETS, d["dir"], "meta.json"), {})
+    print(f"VERDICT {d['verdict'].upper()}: {d['id']}@{d['version']}  ({meta.get('title', '')})")
+    print(f"  at: {d['at']}")
+    print(f"  source file: {meta.get('source_path', '')}")
+    for i, r in enumerate(d.get("ranking") or []):
+        opt = next((o for o in meta.get("options", []) if o["key"] == r["key"]), {})
+        print(f"  pick {i + 1}: {r['key']} ({opt.get('label', '')})  file: {opt.get('src', '')}")
+        if r.get("note", "").strip():
+            print(f"    note: {r['note'].strip()}")
+    for r in d.get("option_notes") or []:
+        print(f"  note on unranked option {r['key']}: {r['note'].strip()}")
+    if d["verdict"] != "not_chosen":
+        print(f"  feedback: {d['feedback'].strip() or '(none)'}")
+    if d.get("closed"):
+        print(f"  this approval filled slot '{d.get('slot_label', '')}' and closed: {', '.join(d['closed'])}")
+    has_notes = bool(d["feedback"].strip() or any(r.get("note", "").strip() for r in (d.get("ranking") or []) + (d.get("option_notes") or [])))
+    if d["verdict"] in ("approved", "picked"):
+        what = "pick 1" if d["verdict"] == "picked" else "this asset"
+        if has_notes:
+            print(f"  next: APPROVED WITH NOTES. The reviewer trusts you to apply the notes to {what} (combine parts from other")
+            print("        options where a note asks). Do NOT resubmit for review. Record the approval with the notes and the")
+            print("        final file path in the project's approval record, then do the follow-up work. Ask only if a note is impossible.")
+        else:
+            print(f"  next: {what} is approved as is. Record it in the project's approval record, then do the follow-up work.")
+        if d["verdict"] == "picked":
+            print("        Pick 2 is the fallback if pick 1 cannot work.")
+    elif d["verdict"] == "reopened":
+        print("  next: REOPENED. The reviewer brought this back into review. Do not change it yet; wait for its verdict.")
+    elif d["verdict"] == "not_chosen":
+        print(f"  next: NOT CHOSEN. {d['feedback']} Stop work on this asset. Do not resubmit it.")
+    elif d["verdict"] == "changes":
+        print("  next: REVIEW AGAIN. Make a new version that answers every point (for a choice: start from pick 1,")
+        print("        or offer new options if nothing was picked), then `goodeye submit` it with the same id and a 'changes' list.")
+    elif d["verdict"] == "rejected":
+        print("  next: stop work on this asset. Do not resubmit unless the reviewer asks.")
+
+
+def age(ts):
+    if not ts:
+        return "never"
+    s = max(0, time.time() - ts)
+    return f"{s / 60:.0f} min ago" if s < 5400 else f"{s / 3600:.1f} h ago"
+
+
+def cmd_brief(a):
+    """Everything a new session needs to join or take over a project, in one printout."""
+    store = delivery_store()
+    store.ingest(decisions())
+    project, me = a.project, agent_name(a)
+    items = [i for i in all_items() if i["project"] == project]
+    watchers = store.status(project)
+    holds = {h["item"]: h for h in store.holds(project)}
+    print(f"GoodEye brief: project {project}  board {URL}")
+    print(f"store {HOME}")
+    print("\nWatchers (agent sessions that receive this project's verdicts):")
+    for w in watchers:
+        c = w["counts"]
+        unacked = c.get("pending", 0) + c.get("queued", 0)
+        print(f"  - {w['name']} ({w['runtime']}), last seen {age(w['last_seen'])}; claims: {', '.join(w['claims']) or 'none'}; "
+              f"unacknowledged deliveries: {unacked}")
+    if not watchers:
+        print("  none. Verdicts are saved but reach no agent until someone watches.")
+    open_items = [i for i in items if i["status"] in ("pending", "changes")]
+    print("\nOpen items (pending = reviewer's turn; changes = an agent must make a new version):")
+    for i in open_items:
+        v = i["versions"][-1]
+        owner, pattern, active = store.owner(project, i["id"])
+        who = "unclaimed" if not owner else owner + ("" if active else " (inactive watcher)")
+        line = f"  - {i['status']:<8} {i['id']}@{v['version']}  owner: {who}  {i['title']}"
+        print(line)
+        if i["id"] in holds:
+            print(f"      ON HOLD: {holds[i['id']]['note']}")
+        if i["status"] == "changes":
+            print(f"      feedback: {v['decisions'][-1]['feedback'].strip()}")
+    if not open_items:
+        print("  none")
+    others = [h for k, h in holds.items() if k not in {i["id"] for i in open_items}]
+    for h in others:
+        print(f"  hold on {h['item']}: {h['note']}")
+    counts = {}
+    for i in items:
+        counts[i["status"]] = counts.get(i["status"], 0) + 1
+    print("\nAll items: " + (", ".join(f"{n} {s}" for s, n in sorted(counts.items())) or "none"))
+    name = me or "YOURNAME"
+    print("\nTo join this project:")
+    if watchers:
+        print(f"  take over one watcher:   goodeye handoff --project {shlex.quote(project)} --from {watchers[0]['name']} --to {name}")
+    print(f"  or watch alongside:      goodeye watch --project {shlex.quote(project)} --as {name}")
+    print(f"  split the work:          goodeye claim 'ITEM-OR-GLOB' --project {shlex.quote(project)} --as {name}")
+    print(f"  then listen (pull):      {wait_command(project, name)}   (run it in the background; rerun after each result)")
+    print("  Codex sessions get pushed wake-ups instead; they read with `goodeye inbox` and confirm with `goodeye ack`.")
+
+
 def cmd_subscription(a):
     store = DeliveryStore(getattr(a, "store", None) or HOME)
     try:
         if a.cmd == "subscribe":
             store.ingest(decisions())
-            result = store.subscribe(a.project, a.thread or os.environ.get("CODEX_THREAD_ID"), a.codex, a.remote)
+            result = store.subscribe(a.project, a.thread or os.environ.get("CODEX_THREAD_ID"), a.codex, a.remote, agent_name(a))
             ensure_server()
-            print(json.dumps({"project": result["project"], "thread": result["thread"], "subscription": result["id"]}))
+            print(json.dumps({"project": result["project"], "name": result["name"], "thread": result["thread"], "subscription": result["id"]}))
             print("Subscribed to future decisions. Run goodeye subscription-test --project " + repr(a.project) + " to verify receipt.")
-        elif a.cmd == "unsubscribe":
-            store.unsubscribe(a.project)
-            print("Unsubscribed. Saved decisions and delivery history retained.")
-        elif a.cmd == "subscriptions":
-            print(json.dumps(store.status(), indent=2))
+        elif a.cmd == "watch":
+            store.ingest(decisions())
+            runtime, thread, name = session_identity(a)
+            if not name:
+                die("name this watcher with --as NAME (or set GOODEYE_AGENT)")
+            result = store.watch(a.project, name, runtime, thread, a.codex, a.remote)
+            if runtime == "codex":
+                ensure_server()
+            print(json.dumps({"project": result["project"], "name": result["name"], "runtime": result["runtime"], "subscription": result["id"]}))
+            if runtime == "pull":
+                print(f"next: run `{wait_command(a.project, name)}` in the background; rerun it after each result.")
+            else:
+                print(f"next: verify with `goodeye subscription-test --project {shlex.quote(a.project)} --as {name}`.")
+        elif a.cmd in ("unwatch", "unsubscribe"):
+            store.unwatch(a.project, agent_name(a) if a.cmd == "unwatch" else getattr(a, "as_", None))
+            print("Stopped watching. Saved decisions, claims and delivery history retained.")
+        elif a.cmd in ("subscriptions", "watchers"):
+            print(json.dumps(store.status(getattr(a, "project", None)), indent=2))
         elif a.cmd == "subscription-test":
             ensure_server()
-            print("Test delivery: " + store.probe(a.project))
+            for ident in store.probe(a.project, agent_name(a)):
+                print("Test delivery: " + ident)
         elif a.cmd == "inbox":
-            print(json.dumps(store.inbox(a.delivery), indent=2))
+            box = store.inbox(a.delivery)
+            print(json.dumps(box, indent=2))
+            unclaimed = sorted({d["id"] for d in box["decisions"] if d.get("kind") != "probe" and not d.get("owner")})
+            if unclaimed:
+                print(f"UNCLAIMED: {', '.join(unclaimed)}. Every watcher ({', '.join(box['watchers'])}) got these. Before you work on one, run "
+                      f"`goodeye claim ID --project {shlex.quote(box['project'])} --as {box['watcher']}`. First claim wins; if yours fails, leave it to the owner.")
             print("next: acknowledge receipt with goodeye ack, then act on each verdict using the GoodEye skill. A probe needs no asset changes.")
         elif a.cmd == "ack":
-            store.acknowledge(a.delivery, a.thread or os.environ.get("CODEX_THREAD_ID"))
+            store.acknowledge(a.delivery, agent_name(a) or a.thread or os.environ.get("CODEX_THREAD_ID"))
             print("Receipt acknowledged. This is not an approval or completion record.")
         elif a.cmd == "retry-delivery":
             store.retry(a.delivery)
             ensure_server()
             print("Delivery queued for retry with the same ID.")
+        elif a.cmd == "claim":
+            me = agent_name(a) or die("claim needs --as NAME (or GOODEYE_AGENT)")
+            store.claim(a.project, a.item, me, a.note, a.force)
+            print(f"{a.item} is claimed by {me}. Its verdicts now go to {me} only.")
+        elif a.cmd == "release":
+            store.release(a.project, a.item, agent_name(a))
+            print(f"{a.item} released. Its next verdict goes to every watcher.")
+        elif a.cmd == "claims":
+            rows = store.claims(a.project)
+            print(json.dumps(rows, indent=2) if a.json else "\n".join(f"{r['pattern']:<32} {r['owner']}" + (f"  ({r['note']})" if r["note"] else "") for r in rows) or "no claims")
+        elif a.cmd == "hold":
+            store.hold(a.project, a.item, a.note)
+            print(f"{a.item} is on hold: no reminders until `goodeye unhold {a.item} --project {shlex.quote(a.project)}`.")
+        elif a.cmd == "unhold":
+            store.unhold(a.project, a.item)
+            print(f"{a.item} is off hold.")
+        elif a.cmd == "handoff":
+            runtime, thread, _ = session_identity(a)
+            out = store.handoff(a.project, a.to, a.from_, runtime, thread, a.codex, a.remote)
+            print(json.dumps(out))
+            print(f"{out['to']} now holds {out['from']}'s claims and cursor. {len(out['moved_deliveries'])} unacknowledged delivery(ies) moved.")
+            if runtime == "pull":
+                print(f"next: run `{wait_command(a.project, a.to)}` in the background.")
+            else:
+                ensure_server()
     except ValueError as exc:
         die(str(exc))
 
 
-def cmd_wait(a):
-    os.makedirs(AGENTS, exist_ok=True)
-    mine = os.path.join(AGENTS, f"{os.getpid()}.json")
-    write_json(mine, {"pid": os.getpid(), "project": a.project or "", "since": now()})
-    atexit.register(lambda: os.path.exists(mine) and os.remove(mine))
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    # Nudge once per 6 hours about changes the reviewer asked for that never came back (only when no new verdict is waiting).
-    pending_verdicts = [d for d in decisions() if d["decision_id"] not in set(read_json(DELIVERED, [])) and (not a.project or d.get("project") == a.project)]
-    reminded = read_json(REMINDED, {}) or {}
-    stale = [i for i in all_items() if i["status"] == "changes" and (not a.project or i["project"] == a.project)
+def remind(project, reminded, keep):
+    """Changes the reviewer asked for that never came back: once per 6 h, never for held items."""
+    stale = [i for i in all_items() if i["status"] == "changes" and (not project or i["project"] == project) and keep(i)
              and hours_since(i["versions"][-1]["decisions"][-1]["at"]) >= stale_hours()
              and hours_since(reminded.get(i["id"] + "@" + i["versions"][-1]["version"], "")) >= 6]
-    if stale and not pending_verdicts:
-        for i in stale:
-            v = i["versions"][-1]
-            print(f"REMINDER: changes requested {hours_since(v['decisions'][-1]['at']):.0f} h ago on {i['id']}@{v['version']} ({i['title']}); no new version yet.")
-            print(f"  feedback: {v['decisions'][-1]['feedback'].strip()}")
-            reminded[i["id"] + "@" + v["version"]] = now()
+    for i in stale:
+        v = i["versions"][-1]
+        print(f"REMINDER: changes requested {hours_since(v['decisions'][-1]['at']):.0f} h ago on {i['id']}@{v['version']} ({i['title']}); no new version yet.")
+        print(f"  feedback: {v['decisions'][-1]['feedback'].strip()}")
+        reminded[i["id"] + "@" + v["version"]] = now()
+    if stale:
         write_json(REMINDED, reminded)
+    return bool(stale)
+
+
+def cmd_wait(a):
+    me = agent_name(a)
+    if me and not a.project:
+        die("--as needs --project")
+    store = delivery_store()
+    sub = None
+    if me:
+        runtime, thread, _ = session_identity(argparse.Namespace(runtime="pull", thread=None, as_=me))
+        try:
+            sub = store.watch(a.project, me, "pull", thread)
+        except ValueError as exc:
+            die(str(exc))
+    os.makedirs(AGENTS, exist_ok=True)
+    mine = os.path.join(AGENTS, f"{os.getpid()}.json")
+    write_json(mine, {"pid": os.getpid(), "project": a.project or "", "name": me or "", "since": now()})
+    atexit.register(lambda: os.path.exists(mine) and os.remove(mine))
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    held = {(h["project"], h["item"]) for h in store.holds()}
+    reminded = read_json(REMINDED, {}) or {}
+    if sub:
+        return wait_pull(a, store, sub, me, held, reminded)
+    # Legacy terminal listener: every verdict, tracked in delivered.json. Independent of watchers.
+    pending_verdicts = [d for d in decisions() if d["decision_id"] not in set(read_json(DELIVERED, [])) and (not a.project or d.get("project") == a.project)]
+    if not pending_verdicts and remind(a.project, reminded, lambda i: (i["project"], i["id"]) not in held):
         print("next: submit the new versions, then run `goodeye wait` again.")
         return
     delivered = set(read_json(DELIVERED, []))
@@ -580,45 +774,52 @@ def cmd_wait(a):
         new = [d for d in decisions() if d["decision_id"] not in delivered and (not a.project or d.get("project") == a.project)]
         if new:
             for d in new:
-                meta = read_json(os.path.join(ASSETS, d["dir"], "meta.json"), {})
-                print(f"VERDICT {d['verdict'].upper()}: {d['id']}@{d['version']}  ({meta.get('title', '')})")
-                print(f"  at: {d['at']}")
-                print(f"  source file: {meta.get('source_path', '')}")
-                for i, r in enumerate(d.get("ranking") or []):
-                    opt = next((o for o in meta.get("options", []) if o["key"] == r["key"]), {})
-                    print(f"  pick {i + 1}: {r['key']} ({opt.get('label', '')})  file: {opt.get('src', '')}")
-                    if r.get("note", "").strip():
-                        print(f"    note: {r['note'].strip()}")
-                for r in d.get("option_notes") or []:
-                    print(f"  note on unranked option {r['key']}: {r['note'].strip()}")
-                if d["verdict"] != "not_chosen":
-                    print(f"  feedback: {d['feedback'].strip() or '(none)'}")
-                if d.get("closed"):
-                    print(f"  this approval filled slot '{d.get('slot_label', '')}' and closed: {', '.join(d['closed'])}")
-                has_notes = bool(d["feedback"].strip() or any(r.get("note", "").strip() for r in (d.get("ranking") or []) + (d.get("option_notes") or [])))
-                if d["verdict"] in ("approved", "picked"):
-                    what = "pick 1" if d["verdict"] == "picked" else "this asset"
-                    if has_notes:
-                        print(f"  next: APPROVED WITH NOTES. The reviewer trusts you to apply the notes to {what} (combine parts from other")
-                        print("        options where a note asks). Do NOT resubmit for review. Record the approval with the notes and the")
-                        print("        final file path in the project's approval record, then do the follow-up work. Ask only if a note is impossible.")
-                    else:
-                        print(f"  next: {what} is approved as is. Record it in the project's approval record, then do the follow-up work.")
-                    if d["verdict"] == "picked":
-                        print("        Pick 2 is the fallback if pick 1 cannot work.")
-                elif d["verdict"] == "reopened":
-                    print("  next: REOPENED. The reviewer brought this back into review. Do not change it yet; wait for its verdict.")
-                elif d["verdict"] == "not_chosen":
-                    print(f"  next: NOT CHOSEN. {d['feedback']} Stop work on this asset. Do not resubmit it.")
-                elif d["verdict"] == "changes":
-                    print("  next: REVIEW AGAIN. Make a new version that answers every point (for a choice: start from pick 1,")
-                    print("        or offer new options if nothing was picked), then `goodeye submit` it with the same id and a 'changes' list.")
-                elif d["verdict"] == "rejected":
-                    print("  next: stop work on this asset. Do not resubmit unless the reviewer asks.")
+                print_verdict(d)
                 print()
             delivered |= {d["decision_id"] for d in new}
             write_json(DELIVERED, sorted(delivered))
             return
+        if a.timeout and time.time() - start > a.timeout:
+            print("no verdict yet (timeout)")
+            sys.exit(1)
+        time.sleep(1.5)
+
+
+def wait_pull(a, store, sub, me, held, reminded):
+    project, start, first = a.project, time.time(), True
+    while True:
+        with LOCK:
+            store.ingest(decisions())
+        store.make_batches(debounce=0 if first else 2)
+        got = store.pull(sub["id"])
+        if got:
+            for box in got:
+                print(f"DELIVERY {box['id']} to {me} ({len(box['decisions'])} decision(s))")
+                for d in box["decisions"]:
+                    if d.get("kind") == "probe":
+                        print("PROBE: delivery test only. Acknowledge it; change nothing.\n")
+                        continue
+                    print_verdict(d)
+                    if d.get("owner") == me:
+                        print("  owner: you")
+                    else:
+                        print(f"  owner: UNCLAIMED. All watchers got this ({', '.join(box['watchers'])}). Before you work on it, run")
+                        print(f"        goodeye claim {d['id']} --project {shlex.quote(project)} --as {me}")
+                        print("        First claim wins. If yours fails, another watcher owns it: leave it alone.")
+                    print()
+                print(f"ack: goodeye ack --delivery {box['id']} --as {me}   (receipt only; not approval or completion)\n")
+            print(f"next: act on each verdict, ack each delivery, then run `{wait_command(project, me)}` again.")
+            return
+        if first:
+            first = False
+            def mine_or_free(i):
+                owner, _, active = store.owner(project, i["id"])
+                return (project, i["id"]) not in held and (owner == me or not (owner and active))
+            if remind(project, reminded, mine_or_free):
+                print(f"next: submit the new versions (or `goodeye hold ID --project {shlex.quote(project)} --note WHY` if the reviewer paused them), "
+                      f"then run `{wait_command(project, me)}` again.")
+                return
+        store.touch(sub["id"])
         if a.timeout and time.time() - start > a.timeout:
             print("no verdict yet (timeout)")
             sys.exit(1)
@@ -917,7 +1118,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.send(200, f.read(), "text/html; charset=utf-8", csp=BOARD_CSP)
         if path == "/api/items":
             extra = {"mkey": media_key()} if LAN and not self.host_is_local() and self.has_token() else {}
-            return self.send(200, {"items": all_items(), "agents": agents_alive(), "subscriptions": delivery_store().status(), "stale_hours": stale_hours(), **extra})
+            return self.send(200, {"items": all_items(), "agents": agents_alive(), "subscriptions": delivery_store().status(), "claims": delivery_store().claims(), "holds": delivery_store().holds(), "stale_hours": stale_hours(), **extra})
         if path.startswith("/files/"):
             rel = urllib.parse.unquote(path[len("/files/"):])
             full = os.path.realpath(os.path.join(ASSETS, rel))
@@ -1279,8 +1480,10 @@ def main():
     s.add_argument("--context", help=",".join(CONTEXTS))
     s.add_argument("--reasoning", required=True, help="JSON: summary, decisions[], changes[] (required from v2)")
     s.add_argument("--scores", help="JSON: {scores: {metric: {value, max, bar, group}}, judge: {name, pass, notes}}")
+    s.add_argument("--as", dest="as_", help="submitting watcher; claims the item if unclaimed (default GOODEYE_AGENT)")
     w = sub.add_parser("wait")
     w.add_argument("--project")
+    w.add_argument("--as", dest="as_", help="pull deliveries for this watcher (registers it); omit for the legacy all-verdicts listener")
     w.add_argument("--timeout", type=int, default=0)
     st = sub.add_parser("status")
     st.add_argument("--project")
@@ -1302,16 +1505,29 @@ def main():
     sl.add_argument("key")
     sl.add_argument("ids", nargs="+")
     sl.add_argument("--label")
-    su = sub.add_parser("subscribe", help="persistently wake an existing Codex thread on future project verdicts")
+    su = sub.add_parser("subscribe", help="0.7 interface: wake an existing Codex thread on future project verdicts (same as watch --runtime codex)")
     su.add_argument("--project", required=True)
     su.add_argument("--thread", help="exact UUID; defaults to CODEX_THREAD_ID")
     su.add_argument("--codex", default="codex", help="local Codex executable supporting queue")
     su.add_argument("--remote", help="optional local unix:// endpoint")
-    us = sub.add_parser("unsubscribe")
-    us.add_argument("--project", required=True)
-    sub.add_parser("subscriptions", help="queued versus agent-acknowledged deliveries")
+    su.add_argument("--as", dest="as_", help="watcher name (default codex-<thread prefix>)")
+    wa = sub.add_parser("watch", help="register this session as a named watcher of a project (many per project)")
+    wa.add_argument("--project", required=True)
+    wa.add_argument("--as", dest="as_", help="watcher name, unique in the project (default GOODEYE_AGENT or derived from the session)")
+    wa.add_argument("--runtime", choices=["codex", "pull"], help="codex = pushed via codex queue; pull = `goodeye wait --as` (default: codex inside Codex, else pull)")
+    wa.add_argument("--thread", help="session id; Codex needs the exact thread UUID (default CODEX_THREAD_ID / CLAUDE_CODE_SESSION_ID)")
+    wa.add_argument("--codex", default="codex")
+    wa.add_argument("--remote")
+    for name in ("unsubscribe", "unwatch"):
+        us = sub.add_parser(name, help="stop watching (unwatch: one watcher; unsubscribe: all, or --as one)")
+        us.add_argument("--project", required=True)
+        us.add_argument("--as", dest="as_")
+    for name in ("subscriptions", "watchers"):
+        ws = sub.add_parser(name, help="watchers with their claims and queued versus acknowledged deliveries")
+        ws.add_argument("--project")
     probe = sub.add_parser("subscription-test", help="send a receipt test without changing assets or decisions")
     probe.add_argument("--project", required=True)
+    probe.add_argument("--as", dest="as_", help="test one watcher only")
     for name in ("inbox", "ack", "retry-delivery"):
         parser = sub.add_parser(name)
         parser.add_argument("--delivery", required=True)
@@ -1319,9 +1535,45 @@ def main():
             parser.add_argument("--store", help="store path supplied by the notification")
         if name == "ack":
             parser.add_argument("--thread", help="subscribed UUID; defaults to CODEX_THREAD_ID")
+            parser.add_argument("--as", dest="as_", help="receiving watcher name")
+    cl = sub.add_parser("claim", help="own an item (or a glob such as film-*): its verdicts go to you only. First claim wins")
+    cl.add_argument("item")
+    cl.add_argument("--project", required=True)
+    cl.add_argument("--as", dest="as_")
+    cl.add_argument("--note", help="why you own it, for the other watchers")
+    cl.add_argument("--force", action="store_true", help="take it from another watcher (agree first)")
+    rl = sub.add_parser("release", help="give up a claim; the next verdict goes to every watcher")
+    rl.add_argument("item")
+    rl.add_argument("--project", required=True)
+    rl.add_argument("--as", dest="as_")
+    cs = sub.add_parser("claims", help="who owns what")
+    cs.add_argument("--project")
+    cs.add_argument("--json", action="store_true")
+    ho = sub.add_parser("hold", help="pause an item: no reminders until unhold")
+    ho.add_argument("item")
+    ho.add_argument("--project", required=True)
+    ho.add_argument("--note", required=True, help="why, and who asked")
+    uh = sub.add_parser("unhold")
+    uh.add_argument("item")
+    uh.add_argument("--project", required=True)
+    hf = sub.add_parser("handoff", help="move a watcher's claims, cursor and unacknowledged deliveries to a new session")
+    hf.add_argument("--project", required=True)
+    hf.add_argument("--to", required=True, help="new watcher name (this session)")
+    hf.add_argument("--from", dest="from_", help="old watcher name (required when several watch)")
+    hf.add_argument("--runtime", choices=["codex", "pull"])
+    hf.add_argument("--thread")
+    hf.add_argument("--codex", default="codex")
+    hf.add_argument("--remote")
+    br = sub.add_parser("brief", help="print what a new session needs to join or take over a project")
+    br.add_argument("--project", required=True)
+    br.add_argument("--as", dest="as_")
     a = p.parse_args()
-    if a.cmd in ("subscribe", "unsubscribe", "subscriptions", "subscription-test", "inbox", "ack", "retry-delivery"):
+    if a.cmd in ("subscribe", "watch", "unsubscribe", "unwatch", "subscriptions", "watchers", "subscription-test", "inbox", "ack",
+                 "retry-delivery", "claim", "release", "claims", "hold", "unhold", "handoff"):
         cmd_subscription(a)
+        return
+    if a.cmd == "brief":
+        cmd_brief(a)
         return
     if a.cmd == "open":
         ensure_server()

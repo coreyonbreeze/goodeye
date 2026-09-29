@@ -7,14 +7,14 @@ description: >-
   of pasting file paths to look at, and instead of asking "does this look good?" or "which one do you like?" in
   chat. Also use it when the user says "send for review", "put it up for review", "I need to approve this",
   "which one should we use", "let me see them", "open the folder", or "show me the renders". Submits each file
-  to the GoodEye board with versions, judge scores and reasoning; a persistent subscription queues the verdict into the subscribed Codex conversation.
+  to the GoodEye board with versions, judge scores and reasoning; verdicts reach the agent session that owns the item (Codex push or background `goodeye wait --as`); several sessions can split a project by claims and hand roles to new sessions.
 ---
 
 # GoodEye review board
 
 GoodEye is a local review board at http://localhost:4400. You submit work with the `goodeye` command. The
 reviewer opens the board, looks at each item (also inside mockups such as a LinkedIn banner or an email), and
-clicks a verdict with spoken or typed notes. `goodeye subscribe` routes new feedback to an existing Codex conversation. A terminal `wait` alone does not guarantee an agent wake-up.
+clicks a verdict with spoken or typed notes. Watchers (agent sessions) receive verdicts; claims decide which watcher owns which item. Section 4 covers joining, splitting work and handing over.
 
 Do not ask the reviewer to open a folder. Do not ask "does this look good?" in chat. Submit to the board.
 
@@ -92,34 +92,65 @@ goodeye submit <file> --id <stable-id> --title "<human title>" --project <Projec
   or file weight). Fix it and resubmit before the reviewer looks, or explain in `reasoning` why it is right.
 - After a batch, tell the reviewer in one line how many items are up, with the link http://localhost:4400.
 
-## 4. Subscribe to verdicts (Codex)
+## 4. Watch, claim, hand off
 
-Before leaving work for review, register this exact conversation:
+A **watcher** is one agent session that receives a project's verdicts. A project can have several watchers.
+Each watcher has a name that is unique in the project (`video`, `brand`, `asset-agent`). Pick a name for your role,
+not for the session, so the next session can take it over.
 
-```bash
-goodeye subscribe --project <Project>
-goodeye subscription-test --project <Project>
-goodeye subscriptions
-```
-
-`subscribe` uses `CODEX_THREAD_ID`, or pass `--thread <exact UUID>`. It stores one owner per project and uses the installed `codex queue` command. No model override, new thread, separate model API key, or periodic model polling. Requires a Codex CLI that supports `queue`.
-
-- Subscribe **before submitting** new work. A new subscription starts with future verdicts; it does not replay historical decisions. Registering the same thread again preserves its cursor. Use `goodeye unsubscribe --project <Project>` before explicitly changing owners.
-- The board server runs the delivery worker. It keeps delivery state across server restarts and retries failed queue requests. Codex handles queued prompts after the current response. Do not claim automatic wake-up from a terminal listener.
-- The subscription test is a notification only, never an asset or approval. Confirm receipt in the target conversation before claiming the integration is verified. A test queued during an active turn may arrive after that turn finishes.
-- When notified, run the supplied `goodeye inbox --store <path> --delivery <id>` command. Read every decision. Then run the supplied `goodeye ack --store <path> --delivery <id>` command. The subscribed `CODEX_THREAD_ID` is required (or `--thread <UUID>`).
-- **Queue acceptance is not agent receipt. Receipt is not completion or approval.** `subscriptions` and the board distinguish pending, queued, and acknowledged deliveries.
-- Deliveries can repeat after a crash or ambiguous timeout. Deduplicate actions using `decision_id` and the project's decision records. Never infer approval from a notification or acknowledgment.
-- If Codex accepted a delivery but it remains unacknowledged, inspect `goodeye inbox` and `goodeye subscriptions`. Use `goodeye retry-delivery --delivery <id>` for an explicit retry with the same ID. Do not start another competing subscriber.
-- Keep one subscription per project. Do not run `goodeye wait` as the Codex wake-up mechanism alongside it. Subscription delivery does not consume or depend on legacy `delivered.json`.
-
-### Other agents / terminal fallback
+### Start of every session: read the brief
 
 ```bash
-goodeye wait --project <Project>
+goodeye brief --project <Project> --as <name>
 ```
 
-This prints new verdicts and exits. It only wakes an agent if that agent's runtime explicitly resumes on background process completion. Otherwise it must be polled during active work. Keep exactly one legacy waiter per project, handle every returned verdict, then restart it. The board labels this as a terminal listener, not a confirmed agent subscription.
+It lists the watchers, who owns which item, holds, open items with their last feedback, and unacknowledged
+deliveries. It ends with the exact commands to join. Run it before you submit or change anything.
+
+### Join
+
+- **Take over a role** (the old session is gone or done):
+  `goodeye handoff --project <Project> --from <old-name> --to <name>`. The new watcher gets the old one's claims,
+  cursor and unacknowledged deliveries. Nothing replays and nothing in flight is lost. The old watcher stops.
+- **Work alongside** other sessions: `goodeye watch --project <Project> --as <name>`. A new watcher starts with
+  future verdicts only.
+
+### Receive verdicts: pick the runtime
+
+- **Claude Code and other shells (pull):** run `goodeye wait --project <Project> --as <name>` as a background task.
+  Claude Code resumes you when it exits. Handle every block in the output, run each `goodeye ack` line it prints,
+  then start the same command again. Keep exactly one waiter per watcher.
+- **Codex (push):** inside Codex, `goodeye watch` registers the thread (`CODEX_THREAD_ID`) and the board server wakes it
+  with `codex queue`. When notified, run the supplied `goodeye inbox ... --delivery <id>`, read every decision, then
+  the supplied `goodeye ack ... --delivery <id>`. `goodeye subscribe --project <Project>` is the older spelling of the same thing.
+- Verify with `goodeye subscription-test --project <Project> --as <name>`. It is a notification only, never an
+  asset or approval. Confirm that it arrived before you say delivery works.
+- Delivery status: `goodeye watchers --project <Project>` shows pending (not handed over), queued (handed over,
+  not acknowledged) and acknowledged. **Handed over is not read. Acknowledged is not completed or approved.**
+- Deliveries can repeat after a crash. Deduplicate by `decision_id`. Never infer approval from a notification.
+- `goodeye retry-delivery --delivery <id>` resends a stuck Codex delivery with the same ID.
+
+### Split the work: claims
+
+- A claim gives one watcher an item id or a glob: `goodeye claim 'film-*' --project <Project> --as <name> --note "films"`.
+  The owner alone gets that item's verdicts. An exact id beats a glob, and a longer glob beats a shorter one.
+- `goodeye submit --as <name>` claims the item for you when nobody owns it. Set `GOODEYE_AGENT=<name>` to skip `--as`.
+- **Unclaimed** verdicts go to every watcher, marked `UNCLAIMED`. Decide as a group: the watcher whose role fits
+  runs `goodeye claim <id>`. **The first claim wins.** If your claim fails, another watcher owns it. Leave it alone.
+- To give work away: `goodeye release <id>`, or agree first, then `goodeye claim <id> --force` from the new owner.
+  Never force-claim without agreement. If the owner's session is gone, `handoff` is the clean fix.
+- `goodeye claims --project <Project>` shows who owns what. The board shows the owner on each item.
+- If an owner stops watching, its items go back to every watcher until someone claims them again.
+
+### Pause: holds
+
+When the reviewer pauses an item, run `goodeye hold <id> --project <Project> --note "<who paused it, and why>"`.
+Held items get no reminders, and `brief` shows the note. Run `goodeye unhold <id>` when work resumes.
+
+### Terminal fallback
+
+Plain `goodeye wait [--project P]` (no `--as`) prints every new verdict for everyone and tracks them in
+`delivered.json`. It does not know about claims. Use it only when no agent watches.
 
 ## 5. Act on the verdict
 
@@ -140,7 +171,7 @@ Handle every `VERDICT` block in the output. Each block ends with a `next:` line.
 - **REOPENED**: the reviewer brought a rejected or not-chosen item back into review. Do not change it; wait for
   its next verdict.
 - **REMINDER** (not a verdict; `wait` exits with it): changes the reviewer asked for have not come back. Submit
-  those new versions, then run `goodeye wait` again.
+  those new versions, or `goodeye hold` them if the reviewer paused them, then run `goodeye wait` again.
 
 If the project has no approval record of its own, `goodeye export DIR --project <Project>` copies every approved
 file with a manifest (who approved, when, notes to apply).

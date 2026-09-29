@@ -2,7 +2,7 @@
 
 **A local review board where AI agents submit creative work and you sign off in one click.**
 
-Your coding agent (Claude Code, Codex, or anything with a shell) makes banners, icons, email GIFs, videos and website loops. Instead of opening folders and typing "yes, the third one, but smaller" back into chat, the agent submits each asset to GoodEye. You review it in the browser, inside a mockup of where it will appear, and click **Approve**, **Request changes**, or **Reject**. Talk your notes into the text box. A subscribed Codex conversation receives your verdict through its local message queue. Terminal-only agents can use the polling fallback.
+Your coding agent (Claude Code, Codex, or anything with a shell) makes banners, icons, email GIFs, videos and website loops. Instead of opening folders and typing "yes, the third one, but smaller" back into chat, the agent submits each asset to GoodEye. You review it in the browser, inside a mockup of where it will appear, and click **Approve**, **Request changes**, or **Reject**. Talk your notes into the text box. Your verdict goes to the agent session that owns the item: Codex through its local message queue, Claude Code and other shells through a background `goodeye wait`. Several sessions can split one project by claims, and a new session can take over a role with one command.
 
 ![A banner under review: LinkedIn mockup, judge scores across versions, and the agent's reasoning](docs/board.jpg)
 
@@ -59,9 +59,14 @@ agent: wakes with "APPROVED WITH NOTES ... Do NOT resubmit", applies the note, m
 
 | Command | What it does |
 |---|---|
-| `goodeye submit FILE --id ID --reasoning R.json` | Submit a new version of an item. Options: `--title`, `--project`, `--version`, `--context a,b`, `--scores S.json`, `--slot KEY --slot-label NAME` |
+| `goodeye submit FILE --id ID --reasoning R.json` | Submit a new version of an item. Options: `--title`, `--project`, `--version`, `--context a,b`, `--scores S.json`, `--slot KEY --slot-label NAME`, `--as NAME` (claims the item) |
 | `goodeye submit --options O.json --id ID --reasoning R.json` | Submit a choice between 2 to 9 options |
-| `goodeye wait [--project P] [--timeout S]` | Block until a verdict arrives, print it with a `next:` instruction, exit |
+| `goodeye wait --project P --as NAME [--timeout S]` | Block until a verdict for watcher NAME arrives, print it with a `next:` instruction, exit. Without `--as`: every verdict (terminal fallback) |
+| `goodeye brief --project P [--as NAME]` | Everything a new session needs: watchers, owners, holds, open items, and the commands to join |
+| `goodeye watch` / `unwatch --project P --as NAME` | Register or remove a watcher (an agent session). Many per project |
+| `goodeye handoff --project P --from OLD --to NEW` | Move a watcher's claims, cursor and unacknowledged deliveries to a new session |
+| `goodeye claim ID-OR-GLOB --project P --as NAME` / `release` / `claims` | Own items; the first claim wins |
+| `goodeye hold ID --project P --note WHY` / `unhold` | Pause an item: no reminders |
 | `goodeye status [--project P]` | List items and their latest state |
 | `goodeye slot KEY ID... [--label NAME]` | Put existing items in one slot |
 | `goodeye serve [--port N]` / `goodeye open` | Run the board / open it in the browser (submit starts it automatically) |
@@ -70,7 +75,7 @@ agent: wakes with "APPROVED WITH NOTES ... Do NOT resubmit", applies the note, m
 | `goodeye notify --ntfy URL` / `--off` / `--test` | Push a phone notification when new work arrives (opt-in) |
 | `goodeye export DIR [--project P]` | Copy approved final files (pick 1 for choices) plus a `manifest.json` |
 
-Environment: `GOODEYE_HOME` (store, default `~/.goodeye`), `GOODEYE_PORT` (default `4400`).
+Environment: `GOODEYE_HOME` (store, default `~/.goodeye`), `GOODEYE_PORT` (default `4400`), `GOODEYE_AGENT` (default watcher name for `--as`).
 
 ## File formats
 
@@ -100,26 +105,43 @@ Metrics with the same `group` share one chart. `bar` draws the pass line and fla
 
 **Options** for a choice: see [examples/options.json](examples/options.json).
 
-## Persistent Codex notifications
+## Agent sessions: watchers, claims and handoff
 
-Subscribe from the Codex conversation that owns the project, before submitting assets:
+A **watcher** is one agent session that receives a project's verdicts. A project can have several, each with a
+name unique in the project. Name watchers by role (`video`, `brand`), so a new session can take the role over.
 
 ```bash
-goodeye subscribe --project Mosaic        # uses CODEX_THREAD_ID
-# Or: goodeye subscribe --project Mosaic --thread <exact-thread-UUID>
-goodeye subscription-test --project Mosaic
-goodeye subscriptions
+goodeye brief   --project Mosaic --as video           # read first: watchers, owners, holds, open items
+goodeye handoff --project Mosaic --from video --to video   # take over a role from a finished session...
+goodeye watch   --project Mosaic --as brand           # ...or join alongside the others
+goodeye wait    --project Mosaic --as video           # pull runtime: run in the background, rerun after each result
 ```
 
-Requires an installed Codex CLI with `codex queue` (tested with 0.157.1). See the [official queue guidance](https://developers.openai.com/blog/mastering-codex-remote-for-engineering). GoodEye calls it locally with the existing thread UUID, without a shell, model override, or separate API key. An optional `--codex /path/to/codex` selects the executable; `--remote unix:///path/to/socket` selects a local daemon. Subscription configuration is CLI-only; a phone or web request cannot configure commands.
+**Runtimes.** Inside Codex (`CODEX_THREAD_ID` set), `watch` registers a *push* watcher: the board server wakes the
+thread with `codex queue`. Everywhere else, the watcher *pulls*: `goodeye wait --as NAME` exits with its
+deliveries, and runtimes that resume on background-task exit (Claude Code does) wake the agent. Both use the
+same durable outbox.
+
+**Claims split the work.** `goodeye claim 'film-*' --project Mosaic --as video` gives the `video` watcher every
+`film-*` item. The owner alone gets that item's verdicts; an exact id beats a glob. `submit --as NAME` claims
+unowned items for their submitter. Unclaimed verdicts go to every watcher, marked `UNCLAIMED`, and the watchers
+decide as a group: the first `goodeye claim` wins, and a losing claim reports the owner. `release` gives an item back;
+`claim --force` takes one after agreement. If an owner stops watching, its items go back to everyone.
+
+**Handoff moves a role.** The new watcher inherits the old one's claims, delivery cursor and unacknowledged
+deliveries (redelivered once). Nothing replays and nothing in flight is lost.
+
+**Holds.** `goodeye hold ID --project P --note "reviewer paused this"` stops reminders for a paused item until `unhold`.
+
+### Codex push details
+
+Requires an installed Codex CLI with `codex queue` (tested with 0.157.1). See the [official queue guidance](https://developers.openai.com/blog/mastering-codex-remote-for-engineering). GoodEye calls it locally with the existing thread UUID, without a shell, model override, or separate API key. An optional `--codex /path/to/codex` selects the executable; `--remote unix:///path/to/socket` selects a local daemon. `goodeye subscribe --project P` (0.7) still works and registers a push watcher named `codex-<thread prefix>`. Watcher configuration is CLI-only; a phone or web request cannot configure commands.
 
 GoodEye's server maintains a durable SQLite outbox. It batches related verdicts, retries failed sends with backoff, and recovers after a restart. Queue acceptance and agent receipt are separate: the notification tells the agent to read `goodeye inbox --delivery ID` and acknowledge with `goodeye ack --delivery ID` (including the supplied store path). Acknowledgment never grants approval or claims the work is finished. Inspect a stuck delivery with `goodeye inbox`; `goodeye retry-delivery --delivery ID` explicitly retries the same ID.
 
-New subscriptions start with future decisions. Re-registering the same thread preserves its cursor. One project has one active owner; use `goodeye unsubscribe --project Mosaic` before transferring ownership. Stored decisions and delivery history remain. Legacy `wait` consumers cannot steal subscription events.
+Delivery is **at least once**: a crash after hand-over but before saving its receipt can repeat a delivery. Stable delivery and decision IDs let the agent deduplicate actions. Verify with `goodeye subscription-test --project P --as NAME` in the target session before claiming wake-up works. Upgrading from 0.7 keeps the existing subscription as a watcher.
 
-Delivery is **at least once**: a crash after queue acceptance but before saving its receipt can repeat the wake message. Stable delivery and decision IDs let the agent deduplicate actions. A queued notification waits for the current Codex response to finish; verify a test in the target conversation before claiming wake-up works. GoodEye and the local Codex daemon must be available; outages leave pending feedback for retry. Successful queue acceptance is not proof the agent has read it.
-
-`goodeye wait` remains available for other runtimes. It prints verdicts and exits; it cannot promise to wake an idle agent by itself.
+Plain `goodeye wait` without `--as` remains a terminal fallback: it prints every verdict, ignores claims, and cannot promise to wake an idle agent by itself.
 
 ## Verdicts
 

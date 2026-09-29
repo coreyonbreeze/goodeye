@@ -609,7 +609,7 @@ const FILTERS = [["pending", "Review"], ["changes", "Changes"], ["approved", "Ap
 const CTX = { "linkedin-banner": "LinkedIn banner", "linkedin-company-cover": "LinkedIn company cover", "linkedin-post": "LinkedIn post", "x-post": "X post", "x-banner": "X profile header", "instagram-post": "Instagram post",
   "instagram-story": "Instagram story", "email": "Email", "website-hero": "Website hero", "browser-tab": "Browser tab",
   "youtube-thumbnail": "YouTube thumbnail", "phone": "Phone" };
-let agents = [], subscriptions = [], staleH = 12;
+let agents = [], subscriptions = [], claims = [], holds = [], staleH = 12;
 let started = false, items = [], filter = "pending", sel = { id: null, version: null, view: "asset", compare: false }, lastSig = "";
 
 let mkey = "";   // read-only media key, sent only to signed-in phones
@@ -690,7 +690,7 @@ function renderMain() {
   const draft = $("#fb") ? $("#fb").value : "";
   if (v.kind === "choice") return renderChoice(it, v, latest, draft);
   $("#main").innerHTML = `
-    <div class="head"><h2>${esc(it.title)}</h2><div class="sub">${esc(it.project ? it.project + " · " : "")}${esc(it.id)} · ${esc(v.kind)} · ${(v.size_bytes / 1048576).toFixed(1)} MB · submitted ${new Date(v.submitted_at).toLocaleString()}</div></div>
+    <div class="head"><h2>${esc(it.title)}</h2><div class="sub">${esc(it.project ? it.project + " · " : "")}${esc(it.id)} · ${esc(v.kind)} · ${(v.size_bytes / 1048576).toFixed(1)} MB · submitted ${new Date(v.submitted_at).toLocaleString()}</div>${ownerHtml(it)}</div>
     <div class="bar"><span class="lbl">Version</span>${it.versions.map(x => `<span class="chip ${x === v ? "on" : ""}" data-v="${esc(x.version)}"><span class="pill st-${x.status}"></span>${esc(x.version)}</span>`).join("")}
       <span class="gap"></span>${prev ? `<span class="lbl">Compare with ${esc(prev.version)}</span>${[["", "Off"], ["slider", "Slider"], ["side", "Side by side"]].map(([k, l]) => `<span class="chip ${(sel.compare || "") === k ? "on" : ""}" data-cmp="${k}">${l}</span>`).join("")}` : ""}</div>
     ${answersHtml(it, v, prev)}
@@ -756,15 +756,29 @@ function wireChips(root, ta) {
 function agentHtml(project) {
   const subs = subscriptions.filter(x => !project || x.project === project);
   if (subs.length) return subs.map(s => {
-    const c = s.counts || {}, last = s.last;
-    const label = c.pending ? "Delivery pending; failed sends retry automatically"
-      : c.queued ? "Queued in Codex; waiting for agent acknowledgment"
-      : last?.acknowledged ? "Agent acknowledged receipt" : "Codex subscribed for future feedback";
-    return `<div class="agentline ${c.pending ? "" : "on"}"><i></i>${esc(s.project)}: ${esc(label)}</div>`;
+    const c = s.counts || {}, last = s.last, pull = s.runtime === "pull";
+    const label = c.pending ? (pull ? "Verdict waiting for this agent to pick it up" : "Delivery pending; failed sends retry automatically")
+      : c.queued ? (pull ? "Handed to agent; waiting for acknowledgment" : "Queued in Codex; waiting for agent acknowledgment")
+      : last?.acknowledged ? "Agent acknowledged receipt" : pull ? "Watching for feedback" : "Codex subscribed for future feedback";
+    const who = s.name ? `${esc(s.project)} · ${esc(s.name)}` : esc(s.project);
+    return `<div class="agentline ${c.pending ? "" : "on"}"><i></i>${who}: ${esc(label)}</div>`;
   }).join("");
   const a = agents.filter(x => !project || !x.project || x.project === project);
   return a.length ? `<div class="agentline"><i></i>Terminal listener waiting; automatic agent wake is not configured</div>`
     : `<div class="agentline"><i></i>No agent subscription; feedback is saved for later</div>`;
+}
+function globRe(p) { return new RegExp("^" + p.replace(/[.+^${}()|\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$"); }
+function ownerOf(it) {
+  const mine = claims.filter(c => c.project === (it.project || ""));
+  const exact = mine.find(c => c.pattern === it.id);
+  if (exact) return exact.owner;
+  const hit = mine.filter(c => { try { return globRe(c.pattern).test(it.id); } catch (e) { return false; } }).sort((a, b) => b.pattern.length - a.pattern.length)[0];
+  return hit ? hit.owner : null;
+}
+function ownerHtml(it) {
+  const o = ownerOf(it), h = holds.find(x => x.project === (it.project || "") && x.item === it.id);
+  if (!o && !h) return "";
+  return `<div class="agentline on"><i></i>${o ? `Owned by ${esc(o)}` : "Unclaimed"}${h ? ` · On hold: ${esc(h.note)}` : ""}</div>`;
 }
 
 function reopenHtml(it) {
@@ -852,7 +866,7 @@ function renderChoice(it, v, latest, draft) {
   const picks = d.ranking.length ? d.ranking.map((k, i) => `${rankName(i)} <b>${esc((opts.find(o => o.key === k) || {}).label || k)}</b>`).join(" · ") : "No picks yet. Click options in order of preference, or press their numbers.";
   const hasNotes = draft.trim() || Object.values(d.notes).some(n => n.trim());
   $("#main").innerHTML = `
-    <div class="head"><h2>${esc(it.title)}</h2><div class="sub">${esc(it.project ? it.project + " · " : "")}${esc(it.id)} · choice between ${opts.length} options · submitted ${new Date(v.submitted_at).toLocaleString()}</div></div>
+    <div class="head"><h2>${esc(it.title)}</h2><div class="sub">${esc(it.project ? it.project + " · " : "")}${esc(it.id)} · choice between ${opts.length} options · submitted ${new Date(v.submitted_at).toLocaleString()}</div>${ownerHtml(it)}</div>
     ${reopenHtml(it)}${checksHtml(v)}${slotHtml(it)}
     <div class="bar"><span class="lbl">Round</span>${it.versions.map(x => `<span class="chip ${x === v ? "on" : ""}" data-v="${esc(x.version)}"><span class="pill st-${x.status}"></span>${esc(x.version)}</span>`).join("")}</div>
     <div class="bar"><span class="lbl">View</span>${["options", ...(v.contexts || [])].map(c => `<span class="chip ${view === c ? "on" : ""}" data-view="${esc(c)}">${c === "options" ? "All options" : "In context: " + esc(CTX[c] || c)}</span>`).join("")}
@@ -1355,7 +1369,7 @@ async function load(force) {
   const sig = JSON.stringify(data);
   if (!force && sig === lastSig) return;
   const oldSel = item(sel.id), oldLen = oldSel ? oldSel.versions.length : 0;
-  items = Array.isArray(data) ? data : data.items; agents = data.agents || []; subscriptions = data.subscriptions || []; if (data.mkey && data.mkey !== mkey) { mkey = data.mkey; if (!force) lastSig = ""; } staleH = data.stale_hours || 12; lastSig = sig;
+  items = Array.isArray(data) ? data : data.items; agents = data.agents || []; subscriptions = data.subscriptions || []; claims = data.claims || []; holds = data.holds || []; if (data.mkey && data.mkey !== mkey) { mkey = data.mkey; if (!force) lastSig = ""; } staleH = data.stale_hours || 12; lastSig = sig;
   renderQueue();
   const it = item(sel.id);
   if (!it) {
@@ -1448,7 +1462,7 @@ function renderDeck() {
   if (!on || dragging) return;
   document.body.style.setProperty("--tbh", $("#topbar").offsetHeight + "px");
   const cards = deckCards();
-  $("#qpos").innerHTML = subscriptions.length ? `<span class="apill on">● Agent subscribed</span>` : `<span class="apill off">○ No wake subscription</span>`;
+  $("#qpos").innerHTML = subscriptions.length ? `<span class="apill on">● ${subscriptions.length > 1 ? subscriptions.length + " agents watching" : "Agent subscribed"}</span>` : `<span class="apill off">○ No wake subscription</span>`;
   const top = cards[0];
   if (top && deckTop === top.id + "@" + top.versions[top.versions.length - 1].version && $("#deck .card2")) return;
   deckTop = top ? top.id + "@" + top.versions[top.versions.length - 1].version : null;
