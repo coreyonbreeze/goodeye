@@ -84,7 +84,7 @@ button, .chip, .row, .opt, .sthumb { touch-action: manipulation; }
 .st-approved, .st-picked { --c: var(--ok); } .st-not_chosen { --c: var(--line); } .st-changes { --c: var(--warn); } .st-rejected { --c: var(--bad); } .st-pending { --c: var(--accent); }
 
 /* main */
-.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow-y: auto; }
 .head { padding: 16px 20px 8px; }
 .head h2 { margin: 0; font-size: 18px; }
 .head .sub { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
@@ -95,7 +95,7 @@ button, .chip, .row, .opt, .sthumb { touch-action: manipulation; }
 .bar .lbl { color: var(--text-muted); font-size: 12px; margin-right: 4px; }
 .bar .gap { width: 14px; }
 .toggle { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--text-secondary); cursor: pointer; user-select: none; }
-.stage { flex: 1; min-height: 0; overflow: auto; padding: 16px 20px; display: flex; gap: 16px; justify-content: center; align-items: flex-start; }
+.stage { flex: 1 0 auto; height: 0; min-height: min(420px, 60vh); overflow: auto; padding: 16px 20px; display: flex; gap: 16px; justify-content: center; align-items: flex-start; }
 .pane { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .pane .cap { font-size: 12px; color: var(--text-muted); }
 .stage > .pane { align-self: stretch; min-height: 0; }
