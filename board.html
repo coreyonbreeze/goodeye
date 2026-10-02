@@ -660,7 +660,7 @@ button:hover:not(:disabled) { filter: brightness(.97); }
   .app { height: calc(100dvh - 68px); grid-template-columns: 284px minmax(0, 1fr) 330px; }
 }
 @media (min-width: 761px) {
-  .stage { flex: 1 1 240px; height: auto; min-height: 180px; padding: 24px 28px; margin: 12px 0; background: var(--surface-2); border-block: 1px solid var(--line); align-items: center; }
+  .stage { flex: 1 1 240px; height: auto; min-height: 120px; padding: 18px 28px; margin: 12px 0; background: var(--surface-2); border-block: 1px solid var(--line); align-items: center; }
   .stage > .pane { justify-content: center; }
   .stage:has(.choice) { align-items: flex-start; }
   .decide .btn .sub { display: none; }
@@ -707,9 +707,70 @@ button:hover:not(:disabled) { filter: brightness(.97); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Projects share the review controls, while their identity and guidelines stay local. */
+body.home-mode { overflow: auto; }
+body.home-mode .app, body.home-mode #topbar, body.home-mode #deck { display: none !important; }
+body:not(.home-mode) #projects-home { display: none; }
+#projects-home { max-width: 1220px; margin: auto; padding: 64px 44px 80px; }
+.projects-intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 38px; }
+.projects-intro h1 { font: 48px/1.1 "Iowan Old Style", "Palatino Linotype", serif; margin: 12px 0; letter-spacing: -.035em; }
+.projects-intro p, .project-card p { color: var(--text-secondary); line-height: 1.6; }
+.project-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.project-actions button, .workspace-nav button, .profile-dialog button { border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; background: var(--surface-1); color: var(--text-primary); cursor: pointer; }
+.project-actions .primary, .profile-dialog .primary { background: #365d44; color: white; border-color: #365d44; }
+.project-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+.project-card { display: flex; flex-direction: column; text-align: left; color: var(--text-primary); background: var(--surface-1); border: 1px solid var(--line); border-radius: 16px; padding: 26px; min-height: 262px; cursor: pointer; transition: transform .18s, box-shadow .18s; }
+.project-card:hover { transform: translateY(-3px); box-shadow: 0 14px 34px #0000000a; }
+.project-card:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 4px; }
+.project-card-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.project-icon { display: inline-grid; place-items: center; width: 48px; height: 48px; border: 1px solid var(--project-accent); color: var(--text-primary); border-radius: 12px; font-size: 18px; font-weight: 600; }
+.project-card h2 { overflow-wrap: anywhere; font: 30px/1.15 "Iowan Old Style", "Palatino Linotype", serif; margin: 22px 0 8px; }
+.project-card p { font-size: 13px; margin: 0 0 22px; }
+.project-card-foot { display: flex; gap: 10px; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 16px; margin-top: auto; color: var(--text-muted); font-size: 11px; }
+.project-count { font-size: 12px; color: var(--text-secondary); }
+.workspace-nav { display: flex; gap: 8px; justify-content: space-between; margin: 0 0 20px; }
+.workspace-nav button { font-size: 11px; padding: 8px 10px; }
+.workspace-identity h1 { min-width: 0; overflow-wrap: anywhere; }
+.workspace-identity { border-left: 3px solid var(--project-accent, #326653); padding-left: 12px; }
+#collection-filter { margin-top: -6px; }
+.profile-dialog { width: min(760px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); padding: 0; border: 1px solid var(--line); border-radius: 18px; background: var(--surface-1); color: var(--text-primary); }
+.profile-dialog::backdrop { background: #111a16a0; backdrop-filter: blur(5px); }
+.profile-dialog form { padding: 28px; }
+.profile-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.profile-dialog h2 { font: 30px "Iowan Old Style", "Palatino Linotype", serif; margin: 0; }
+.profile-dialog p { color: var(--text-secondary); line-height: 1.6; font-size: 13px; }
+.profile-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 24px 0; }
+.profile-fields label { display: grid; gap: 8px; font-size: 12px; color: var(--text-secondary); }
+.profile-fields .wide { grid-column: 1 / -1; }
+.profile-fields input, .profile-fields textarea { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text-primary); font: inherit; line-height: 1.5; }
+.profile-fields textarea { min-height: 90px; resize: vertical; }
+.profile-dialog footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+#profile-error { color: var(--bad); font-size: 13px; }
+.asset-organization { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 12px; color: var(--text-muted); font-size: 11px; }
+.asset-organization select { max-width: 190px; background: var(--surface-1); color: var(--text-secondary); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+.profile-snapshot { margin: 14px 0; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: var(--text-secondary); }
+.profile-snapshot summary { cursor: pointer; }
+.profile-snapshot dl { margin-bottom: 0; }
+.profile-snapshot dt { font-weight: 600; margin-top: 12px; }
+.profile-snapshot dd { margin: 5px 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+@media (max-width: 760px) {
+  #projects-home { padding: 32px 20px; }
+  .projects-intro { display: block; }
+  .projects-intro h1 { font-size: 38px; }
+  .project-actions { margin-top: 24px; }
+  .project-grid { grid-template-columns: 1fr; gap: 16px; }
+  .project-card { padding: 22px; min-height: 230px; }
+  body.home-mode .studio-bar { display: flex; padding: 0 20px; }
+  body.home-mode .studio-tools { display: none; }
+  .profile-dialog form { padding: 22px; }
+  .profile-fields { grid-template-columns: 1fr; }
+  .profile-fields .wide { grid-column: auto; }
+  #topbar b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px; }
+}
 </style>
 </head>
-<body>
+<body class="home-mode">
 <a class="skip-link" href="#main">Skip to review</a>
 <header class="studio-bar">
   <div class="brand-lockup"><div class="wordmark">GoodEye<span>.</span></div><span class="studio-label">The review studio</span></div>
@@ -720,6 +781,8 @@ button:hover:not(:disabled) { filter: brightness(.97); }
   <header><h2 id="shortcuts-title">Keyboard shortcuts</h2><button autofocus id="close-shortcuts" aria-label="Close keyboard shortcuts">Close</button></header>
   <dl><div><dt>Find an asset</dt><dd><kbd>/</kbd></dd></div><div><dt>Next / previous asset</dt><dd><kbd>J / K</kbd></dd></div><div><dt>Approve</dt><dd><kbd>⌥ A</kbd></dd></div><div><dt>Request changes</dt><dd><kbd>⌥ C</kbd></dd></div><div><dt>Reject</dt><dd><kbd>⌥ R</kbd></dd></div><div><dt>Undo pending verdict</dt><dd><kbd>⌘ Z / U</kbd></dd></div><div><dt>Flash previous version</dt><dd><kbd>Hold C</kbd></dd></div><div><dt>Play / pause</dt><dd><kbd>Space</kbd></dd></div></dl>
 </dialog>
+<section id="projects-home" aria-label="Projects"><p class="empty">Loading your projects…</p></section>
+<dialog id="profile-dialog" class="profile-dialog" aria-labelledby="profile-title"></dialog>
 <div id="topbar"><button id="qbtn" aria-label="Open queue">☰ <span id="qcount"></span></button><b>GoodEye</b><span id="qpos"></span><button id="cardsbtn">Cards</button><button id="gearbtn" aria-label="Settings">⚙</button></div>
 <div id="deck" hidden></div>
 <div id="sheet" hidden></div>
@@ -729,10 +792,12 @@ button:hover:not(:disabled) { filter: brightness(.97); }
 <div class="app">
   <aside class="queue" id="queue">
     <header>
-      <div class="qhead"><h1>Review queue</h1><span class="queue-total" id="queue-total"></span></div>
+      <div class="workspace-nav"><button id="projectsbtn">← Projects</button><button id="profilebtn">Brand & direction</button></div>
+      <div class="qhead workspace-identity"><h1 id="workspace-title">Review queue</h1><span class="queue-total" id="queue-total"></span></div>
       <p class="queue-caption" id="queue-caption">A place for your next decision.</p>
       <label class="queue-search"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><input id="queue-search" type="search" placeholder="Find an asset…" aria-label="Search assets"></label>
       <select class="project-filter" id="project-filter" aria-label="Filter by project"><option value="">All projects</option></select>
+      <select class="project-filter" id="collection-filter" aria-label="Filter by collection"><option value="">All collections</option></select>
       <div class="seg" id="filters"></div>
       <div id="agentline" class="agentline"></div>
     </header>
@@ -758,8 +823,8 @@ function rememberFeedback() {
   const field = $("#fb");
   if (field?.dataset.draftKey) feedbackDrafts[field.dataset.draftKey] = field.value;
 }
-let queueQuery = "", projectFilter = "";
-const matchesWorkspace = i => (!projectFilter || i.project === projectFilter) && (!queueQuery || `${i.title} ${i.id} ${i.project}`.toLowerCase().includes(queueQuery));
+let queueQuery = "", projectFilter = null, collectionFilter = "", projects = [], homeMode = true;
+const matchesWorkspace = i => (projectFilter === null || i.project === projectFilter) && (!collectionFilter || (collectionFilter === "__unsorted" ? !i.collection : i.collection === collectionFilter.slice(2))) && (!queueQuery || `${i.title} ${i.asset_id} ${i.project} ${i.collection || ""}`.toLowerCase().includes(queueQuery));
 const queueItems = (status = filter) => items.filter(i => matchesWorkspace(i) && inFilter(i, status));
 const draftOf = v => drafts[v.id + "@" + v.version] ||= { ranking: [], notes: {}, cols: 3 };
 const optAsset = (v, o) => ({ ...o, id: v.id, version: v.version + "#" + o.key, title: o.label, dir: v.dir, file: "options/" + o.file, project: v.project });
@@ -781,7 +846,8 @@ const fileUrl = v => {
 function clientLog(ev) {           // phone troubleshooting: what the video player reports goes to ~/.goodeye/client.log
   try { fetch("/api/clientlog", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...ev, ua: navigator.userAgent, standalone: !!navigator.standalone }), keepalive: true }).catch(() => {}); } catch (e) {}
 }
-const item = id => items.find(i => i.id === id);
+const item = id => items.find(i => i.id === id) || (items.filter(i => i.asset_id === id).length === 1 ? items.find(i => i.asset_id === id) : null);
+const reviewBody = (body, it = item(body.id)) => { if (!it) throw new Error("Asset no longer available; refresh before reviewing"); return { ...body, id: it.asset_id, project: it.project }; };
 const ver = (it, version) => it.versions.find(v => v.version === version) || it.versions[it.versions.length - 1];
 
 function media(v, { cls = "" } = {}) {
@@ -789,6 +855,104 @@ function media(v, { cls = "" } = {}) {
   if (v.kind === "video") return `<video class="${cls} anim" data-fps="${m.fps || ""}" data-key="${esc(v.id + "@" + v.version)}" src="${u}" muted loop playsinline preload="auto"></video>`;
   if (v.kind === "gif") return `<canvas class="${cls} anim" data-key="${esc(v.id + "@" + v.version)}" data-src="${u}" ${m.width ? `width="${m.width}" height="${m.height}"` : ""}></canvas>`;
   return `<img class="${cls}" src="${u}" alt="${esc(v.title)}">`;
+}
+
+const PROFILE_LABELS = { logos: "Logos & assets", colors: "Color palette", typography: "Typography", voice: "Voice & writing", references: "References", visual_rules: "Visual & motion rules", export_rules: "Export requirements" };
+function workspaceHash() { return projectFilter === null ? "#inbox" : "#project/" + (projects.find(p => p.name === projectFilter)?.key || ""); }
+function applyWorkspace() {
+  document.body.classList.toggle("home-mode", homeMode);
+  const p = projects.find(p => p.name === projectFilter);
+  document.body.style.setProperty("--project-accent", p?.accent || "#326653");
+  $("#workspace-title").textContent = p ? p.name || "Unassigned" : "All projects";
+  $(".studio-label").textContent = homeMode ? "The review studio" : p?.name || (p ? "Unassigned" : "All projects");
+  $("#topbar b").textContent = p?.name || (p ? "Unassigned" : "GoodEye");
+  $("#profilebtn").hidden = !p?.name;
+}
+function renderProjects() {
+  const total = projects.reduce((n, p) => n + p.pending, 0);
+  document.title = total ? `(${total}) Projects · GoodEye` : "Projects · GoodEye";
+  $("#projects-home").innerHTML = `<div class="projects-intro"><div><div class="eyebrow">Your creative workspace</div><h1>Every project. In its place.</h1><p>${total ? `${total} asset${total === 1 ? "" : "s"} ready for your eye.` : "A clear space for each body of work."} Each with its own direction.</p></div><div class="project-actions"><button id="all-inbox">All-project inbox ↗</button><button id="new-project" class="primary">New project +</button></div></div>
+    <div class="project-grid">${projects.map(p => {
+      const watching = subscriptions.filter(s => s.project === p.name).length;
+      const profileSet = Object.values(p.profile).some(Boolean);
+      return `<button class="project-card" data-project="${esc(p.key)}" style="--project-accent:${esc(p.accent)}"><div class="project-card-top"><span class="project-icon">${esc(p.icon)}</span><span class="project-count">${p.pending ? `${p.pending} to review` : "Up to date"} ↗</span></div><h2>${esc(p.name || "Unassigned")}</h2><p>${esc(p.description || (p.collections.length ? p.collections.join(" · ") : "Assets, feedback, and creative direction."))}</p><div class="project-card-foot"><span>${p.total} asset${p.total === 1 ? "" : "s"} · ${p.changes} in revision<br>${watching} agent${watching === 1 ? "" : "s"} watching</span><span>${p.updated ? "Active " + esc(ago(p.updated)) : "Ready for its first asset"}<br>${profileSet ? `Direction r${p.revision}` : "Direction not set"}</span></div></button>`;
+    }).join("")}</div>${!projects.length ? '<p class="empty">Create your first project to collect work and set its direction.</p>' : ""}`;
+  $("#all-inbox").onclick = () => openWorkspace(null);
+  $("#new-project").onclick = () => editProject();
+  document.querySelectorAll("[data-project]").forEach(el => el.onclick = () => openWorkspace(projects.find(p => p.key === el.dataset.project).name));
+}
+function showProjects(updateURL = true) {
+  rememberFeedback(); homeMode = true;
+  sel = { id: null, version: null, view: "asset", compare: false };
+  if (group) { group.destroy(); group = null; }
+  document.querySelectorAll("video").forEach(v => v.pause());
+  document.body.classList.remove("qopen");
+  if (updateURL) history.replaceState(null, "", "#projects");
+  applyWorkspace(); renderProjects(); renderDeck();
+  window.scrollTo(0, 0);
+}
+function openWorkspace(name, target) {
+  rememberFeedback();
+  projectFilter = name; collectionFilter = ""; queueQuery = ""; filter = "pending"; homeMode = false;
+  $("#queue-search").value = ""; deckTop = null;
+  Object.assign(sess, {approved: 0, changes: 0, rejected: 0, start: 0});
+  applyWorkspace();
+  document.body.classList.remove("qopen");
+  if (target && isPhone()) deckMode = false;
+  const next = target || queueItems("pending")[0] || queueItems("all")[0];
+  if (next) { if (!inFilter(next, filter)) filter = "all"; select(next.id); }
+  else showIdle();
+  // Preserve the workspace on reload, including an empty one.
+  if (!target) history.replaceState(null, "", workspaceHash());
+  renderDeck();
+}
+function routeWorkspace() {
+  let route;
+  try { route = decodeURIComponent(location.hash.slice(1)); } catch { route = "projects"; }
+  if (route === "inbox") return openWorkspace(null);
+  if (route.startsWith("project/")) {
+    const p = projects.find(p => p.key === route.slice(8));
+    if (p) return openWorkspace(p.name);
+  }
+  const it = item(route);
+  if (it) return openWorkspace(it.project, it);
+  showProjects();
+  if (route && route !== "projects") toast("This asset link is unavailable. Open its project to find it.");
+}
+function organizationHtml(it, v) {
+  const p = projects.find(p => p.name === it.project);
+  const collections = p?.collections || [];
+  const revision = v.profile_revision;
+  const fields = Object.entries(v.profile_snapshot || {}).filter(([, value]) => value);
+  return `<div class="asset-organization"><label>Collection <select data-collection-item="${esc(it.id)}" aria-label="Asset collection"><option value="">Unsorted</option>${collections.map(c => `<option value="${esc(c)}" ${c === it.collection ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></label><span>${revision == null ? "Submitted before direction tracking" : `Submitted with direction r${revision}${p && p.revision !== revision ? ` · current r${p.revision}` : ""}`}</span></div>${fields.length ? `<details class="profile-snapshot"><summary>Direction used for this version</summary><dl>${fields.map(([key, value]) => `<dt>${esc(PROFILE_LABELS[key] || key)}</dt><dd>${esc(value)}</dd>`).join("")}</dl></details>` : ""}`;
+}
+function editProject(project) {
+  const p = project || { name: "", icon: "", accent: "#326653", description: "", collections: [], revision: 0, profile: {} };
+  const dialog = $("#profile-dialog");
+  const hints = { logos: "Approved logo files, paths, or links", colors: "Color names, hex values, and their uses", typography: "Typefaces, weights, and hierarchy", voice: "Tone, terms to use, and terms to avoid", references: "Reference links, moodboards, and what to take from them", visual_rules: "Composition, character proportions, materials, motion, and rules to follow", export_rules: "File formats, dimensions, naming, transparency, and delivery specs" };
+  dialog.innerHTML = `<form><header><h2 id="profile-title">${project ? "Brand & direction" : "A new project"}</h2><button type="button" id="close-profile">Close</button></header><p>${project ? `${esc(p.name)} · revision ${p.revision}. ` : "Give this body of work its own space. "}Agents receive these guidelines in their project brief. New submissions save a copy; earlier versions keep their original direction.</p><div class="profile-fields">
+    <label class="wide">Project name<input name="name" required maxlength="120" value="${esc(p.name)}" ${project ? "readonly" : "autofocus"}></label>
+    <label>Project icon or initials<input name="icon" maxlength="12" value="${esc(p.icon)}" placeholder="MO"></label><label>Workspace accent<input name="accent" type="color" value="${esc(p.accent)}"></label>
+    <label class="wide">Description<input name="description" maxlength="500" value="${esc(p.description)}" placeholder="What this project is for"></label>
+    <label class="wide">Collections · one per line<textarea name="collections" placeholder="Brand\nWebsite\nCampaigns">${esc(p.collections.join("\n"))}</textarea></label>
+    ${Object.entries(PROFILE_LABELS).map(([key, label]) => `<label class="wide">${esc(label)}<textarea name="${key}" maxlength="20000" placeholder="${esc(hints[key])}">${esc(p.profile[key] || "")}</textarea></label>`).join("")}</div><footer><span id="profile-error" role="alert"></span><button type="submit" class="primary">${project ? "Save direction" : "Create project"}</button></footer></form>`;
+  $("#close-profile").onclick = () => dialog.close();
+  $("form", dialog).onsubmit = async e => {
+    e.preventDefault(); const form = e.target, data = new FormData(form), button = $('[type="submit"]', form);
+    const name = String(data.get("name")).trim();
+    if (!project && projects.some(p => p.name === name)) { $("#profile-error").textContent = "That project already exists. Open it to edit its direction."; return; }
+    button.disabled = true; $("#profile-error").textContent = "";
+    const body = { name, expected_revision: p.revision, icon: data.get("icon") || name.slice(0, 2).toUpperCase(), accent: data.get("accent"), description: data.get("description"), collections: String(data.get("collections")).split("\n").map(c => c.trim()).filter(Boolean), profile: Object.fromEntries(Object.keys(PROFILE_LABELS).map(key => [key, data.get(key)])) };
+    try {
+      const response = await fetch("/api/project", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+      if (!response.ok) throw new Error((await response.json()).error);
+      await load(true);
+      if (dialog.open && $("form", dialog) === form) { dialog.close(); openWorkspace(name); }
+      toast(project ? "Project direction saved" : "Project created");
+    } catch (error) { if ($("form", dialog) === form) $("#profile-error", form).textContent = error.message; }
+    finally { button.disabled = false; }
+  };
+  dialog.showModal();
 }
 
 /* ---------- queue ---------- */
@@ -801,17 +965,22 @@ function renderQueue() {
   $("#qcount").textContent = counts.pending || "";
   $("#queue-total").textContent = `${counts.all} asset${counts.all === 1 ? "" : "s"}`;
   $("#queue-caption").textContent = counts.pending ? `${counts.pending} awaiting review.` : "No assets need review.";
-  const projects = [...new Set(items.map(i => i.project).filter(Boolean))].sort();
   const projectSelect = $("#project-filter");
-  const projectOptions = '<option value="">All projects</option>' + projects.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join("");
-  if (projectSelect.innerHTML !== projectOptions) { projectSelect.innerHTML = projectOptions; projectSelect.value = projectFilter; }
-  const al = $("#agentline"); if (al) al.outerHTML = agentHtml().replace('class="agentline', 'id="agentline" class="agentline');
+  const projectOptions = '<option value="__all">All projects</option>' + projects.map(p => `<option value="${esc("project:" + p.name)}">${esc(p.name || "Unassigned")}</option>`).join("");
+  if (projectSelect.innerHTML !== projectOptions) projectSelect.innerHTML = projectOptions;
+  projectSelect.value = projectFilter === null ? "__all" : "project:" + projectFilter;
+  const collections = projectFilter === null ? [...new Set(projects.flatMap(p => p.collections))] : (projects.find(p => p.name === projectFilter)?.collections || []);
+  const cf = $("#collection-filter");
+  const opts = '<option value="">All collections</option><option value="__unsorted">Unsorted</option>' + collections.map(c => `<option value="${esc("c:" + c)}">${esc(c)}</option>`).join("");
+  if (cf.innerHTML !== opts) cf.innerHTML = opts;
+  cf.value = collectionFilter;
+  const al = $("#agentline"); if (al) al.innerHTML = agentHtml(projectFilter);
   if (typeof renderDeck === "function" && isPhone() && deckMode) setTimeout(renderDeck);
   const pos = shown.findIndex(i => i.id === sel.id);
   $("#qpos").textContent = pos >= 0 ? `${pos + 1} of ${shown.length}` : "";
   const row = (i, inslot) => {
     const v = i.versions[i.versions.length - 1];
-    return `<div class="row ${inslot ? "inslot" : ""} ${sel.id === i.id ? "on" : ""}" data-id="${esc(i.id)}" role="button" tabindex="0" aria-label="${esc(i.title)}" aria-current="${sel.id === i.id ? "true" : "false"}"><div class="thumb">${thumbOf(i)}</div><div style="min-width:0">
+    return `<div class="row ${inslot ? "inslot" : ""} ${sel.id === i.id ? "on" : ""}" data-id="${esc(i.id)}" data-asset-id="${esc(i.asset_id)}" role="button" tabindex="0" aria-label="${esc(i.title)}" aria-current="${sel.id === i.id ? "true" : "false"}"><div class="thumb">${thumbOf(i)}</div><div style="min-width:0">
       <div class="t">${esc(i.title)}</div>
       <div class="m">${checksOf(v).length ? `<span class="warnbadge" title="Spec check">⚠</span>` : ""}<span class="pill st-${pendingDec && pendingDec.it.id === i.id ? "approved" : i.status}">${pendingDec && pendingDec.it.id === i.id ? "Sending…" : STATUS[i.status]}</span>${i.status === "changes" && lastDecision(i) && (Date.now() - new Date(lastDecision(i).at)) / 36e5 >= staleH ? `<span class="stale">${Math.round((Date.now() - new Date(lastDecision(i).at)) / 36e5)} h</span>` : ""}<span>${v.kind === "choice" ? `Choice · ${v.options.length}` : esc(v.version)}</span>${i.project ? `<span>${esc(i.project)}</span>` : ""}</div></div></div>`;
   };
@@ -840,12 +1009,15 @@ $("#list").onkeydown = e => {
   if ((e.key === "Enter" || e.key === " ") && e.target.closest(".row")) { e.preventDefault(); e.target.closest(".row").click(); }
 };
 $("#queue-search").oninput = e => { queueQuery = e.target.value.trim().toLowerCase(); deckTop = null; renderQueue(); };
-$("#project-filter").onchange = e => { projectFilter = e.target.value; deckTop = null; renderQueue(); };
+$("#project-filter").onchange = e => openWorkspace(e.target.value === "__all" ? null : e.target.value.slice(8));
+$("#collection-filter").onchange = e => { rememberFeedback(); collectionFilter = e.target.value; deckTop = null; const next = queueItems()[0]; if (next) select(next.id); else showIdle(); };
+$("#projectsbtn").onclick = showProjects;
+$("#profilebtn").onclick = () => editProject(projects.find(p => p.name === projectFilter));
 $("#shortcutsbtn").onclick = () => $("#shortcuts").showModal();
 $("#close-shortcuts").onclick = () => $("#shortcuts").close();
 $("#shortcuts").onclick = e => { if (e.target === $("#shortcuts")) { const r = e.target.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) e.target.close(); } };
 document.addEventListener("keydown", e => {
-  if ($("#shortcuts").open || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.metaKey || e.ctrlKey || e.altKey) return;
+  if ($("dialog[open]") || homeMode || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === "/") { e.preventDefault(); if (isPhone()) document.body.classList.add("qopen"); $("#queue-search").focus(); }
   if (e.key === "?") { e.preventDefault(); $("#shortcuts").showModal(); }
   if ((e.key === "Enter" || e.key === " ") && e.target.matches('.chip[role="button"]')) { e.preventDefault(); e.target.click(); }
@@ -853,6 +1025,10 @@ document.addEventListener("keydown", e => {
 
 function select(id, version) {
   const it = item(id); if (!it) return;
+  rememberFeedback();
+  id = it.id;
+  if (projectFilter !== null && projectFilter !== it.project) { projectFilter = it.project; collectionFilter = ""; }
+  homeMode = false; applyWorkspace();
   const keepView = sel.id === id;
   sel = { id, version: version || it.versions[it.versions.length - 1].version, view: keepView ? sel.view : "asset", compare: keepView && sel.compare };
   history.replaceState(null, "", "#" + encodeURIComponent(id));
@@ -871,7 +1047,7 @@ function renderMain() {
   const draft = feedbackDrafts[v.id + "@" + v.version] || "";
   if (v.kind === "choice") return renderChoice(it, v, latest, draft);
   $("#main").innerHTML = `
-    <div class="head"><div class="eyebrow">${esc(it.project || "Your workspace")} / ${latest ? esc(STATUS[v.status]) : "Version history"}</div><h2>${esc(it.title)}</h2><div class="sub">${esc(it.project ? it.project + " · " : "")}${esc(it.id)} · ${esc(v.kind)} · ${(v.size_bytes / 1048576).toFixed(1)} MB · submitted ${new Date(v.submitted_at).toLocaleString()}</div>${ownerHtml(it)}</div>
+    <div class="head"><div class="eyebrow">${esc(it.project || "Your workspace")} / ${latest ? esc(STATUS[v.status]) : "Version history"}</div><h2>${esc(it.title)}</h2><div class="sub">${esc(it.project ? it.project + " · " : "")}${esc(it.asset_id)} · ${esc(v.kind)} · ${(v.size_bytes / 1048576).toFixed(1)} MB · submitted ${new Date(v.submitted_at).toLocaleString()}</div>${ownerHtml(it)}${organizationHtml(it, v)}</div>
     <div class="bar"><span class="lbl">Version</span>${it.versions.map(x => `<span class="chip ${x === v ? "on" : ""}" data-v="${esc(x.version)}"><span class="pill st-${x.status}"></span>${esc(x.version)}</span>`).join("")}
       <span class="gap"></span>${prev ? `<span class="lbl">Compare with ${esc(prev.version)}</span>${[["", "Off"], ["slider", "Slider"], ["side", "Side by side"]].map(([k, l]) => `<span class="chip ${(sel.compare || "") === k ? "on" : ""}" data-cmp="${k}">${l}</span>`).join("")}` : ""}</div>
     ${answersHtml(it, v, prev)}
@@ -914,7 +1090,7 @@ function checksHtml(v) {
 function quickReplies() {
   // Short phrases from past notes: frequent first, then recent. One tap adds them to the note.
   const seen = new Map();
-  items.flatMap(i => i.versions.flatMap(v => v.decisions)).sort((a, b) => a.at.localeCompare(b.at)).forEach((d, n) => {
+  items.filter(i => i.project === (item(sel.id)?.project ?? projectFilter)).flatMap(i => i.versions.flatMap(v => v.decisions)).sort((a, b) => a.at.localeCompare(b.at)).forEach((d, n) => {
     [d.feedback, ...(d.ranking || []).map(r => r.note)].filter(Boolean).forEach(t => t.split(/(?<=[.!?])\s+|\n+/).forEach(p => {
       const k = p.trim().replace(/[.!?]+$/, ""); if (k.length < 4 || k.length > 70) return;
       const e = seen.get(k.toLowerCase()) || { text: k, count: 0, last: 0 }; e.count++; e.last = n; seen.set(k.toLowerCase(), e);
@@ -934,8 +1110,8 @@ function wireChips(root, ta) {
     ta.dispatchEvent(new Event("input")); ta.focus(); haptic("tick");
   });
 }
-function agentHtml(project) {
-  const subs = subscriptions.filter(x => !project || x.project === project);
+function agentHtml(project = projectFilter) {
+  const subs = subscriptions.filter(x => project === null || x.project === project);
   if (subs.length) return subs.map(s => {
     const c = s.counts || {}, last = s.last, pull = s.runtime === "pull";
     const label = c.pending ? (pull ? "Verdict waiting for this agent to pick it up" : "Delivery pending; failed sends retry automatically")
@@ -944,20 +1120,20 @@ function agentHtml(project) {
     const who = s.name ? `${esc(s.project)} · ${esc(s.name)}` : esc(s.project);
     return `<div class="agentline ${c.pending ? "" : "on"}"><i></i>${who}: ${esc(label)}</div>`;
   }).join("");
-  const a = agents.filter(x => !project || !x.project || x.project === project);
+  const a = agents.filter(x => project === null || x.project === project);
   return a.length ? `<div class="agentline"><i></i>Terminal listener waiting; automatic agent wake is not configured</div>`
     : `<div class="agentline"><i></i>No agent subscription; feedback is saved for later</div>`;
 }
 function globRe(p) { return new RegExp("^" + p.replace(/[.+^${}()|\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$"); }
 function ownerOf(it) {
   const mine = claims.filter(c => c.project === (it.project || ""));
-  const exact = mine.find(c => c.pattern === it.id);
+  const exact = mine.find(c => c.pattern === it.asset_id);
   if (exact) return exact.owner;
-  const hit = mine.filter(c => { try { return globRe(c.pattern).test(it.id); } catch (e) { return false; } }).sort((a, b) => b.pattern.length - a.pattern.length)[0];
+  const hit = mine.filter(c => { try { return globRe(c.pattern).test(it.asset_id); } catch (e) { return false; } }).sort((a, b) => b.pattern.length - a.pattern.length)[0];
   return hit ? hit.owner : null;
 }
 function ownerHtml(it) {
-  const o = ownerOf(it), h = holds.find(x => x.project === (it.project || "") && x.item === it.id);
+  const o = ownerOf(it), h = holds.find(x => x.project === (it.project || "") && x.item === it.asset_id);
   if (!o && !h) return "";
   return `<div class="agentline on"><i></i>${o ? `Owned by ${esc(o)}` : "Unclaimed"}${h ? ` · On hold: ${esc(h.note)}` : ""}</div>`;
 }
@@ -969,7 +1145,7 @@ function wireReopen(it) {
   const b = $("#main [data-reopen]"); if (!b) return;
   b.onclick = async () => {
     const v = it.versions[it.versions.length - 1];
-    const res = await fetch("/api/decide", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: it.id, version: v.version, verdict: "reopened", feedback: "" }) });
+    const res = await fetch("/api/decide", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(reviewBody({ id: it.id, version: v.version, verdict: "reopened", feedback: "" })) });
     if (!res.ok) { haptic("error"); return toast((await res.json()).error || "Save failed"); }
     haptic("undo"); toast(`Reopened ${it.title}. The agent was told.`); await load(true); select(it.id);
   };
@@ -988,7 +1164,7 @@ function wireSlot(it) {
   const c = $("#main [data-close-slot]");
   if (c) c.onclick = async () => {
     const v = it.versions[it.versions.length - 1];
-    const res = await fetch("/api/decide", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: it.id, version: v.version, verdict: "not_chosen", feedback: "" }) });
+    const res = await fetch("/api/decide", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(reviewBody({ id: it.id, version: v.version, verdict: "not_chosen", feedback: "" })) });
     if (!res.ok) return toast("Save failed");
     toast(`Closed ${it.title} as not chosen.`); await load(true); renderMain(); renderSide();
   };
@@ -1009,8 +1185,8 @@ function sessHtml() {
   return `<div class="sess"><b>${n} reviewed</b> · ${sess.approved} approved · ${sess.changes} changes${sess.rejected ? ` · ${sess.rejected} rejected` : ""} · ${mins} min</div>`;
 }
 function idleHtml() {
-  const waiting = items.filter(i => i.status === "changes").sort((a, b) => (lastDecision(b)?.at || "").localeCompare(lastDecision(a)?.at || ""));
-  const n = k => queueItems(k).length, rej = items.filter(i => ["rejected", "not_chosen"].includes(i.status)).length;
+  const waiting = items.filter(i => matchesWorkspace(i) && i.status === "changes").sort((a, b) => (lastDecision(b)?.at || "").localeCompare(lastDecision(a)?.at || ""));
+  const n = k => queueItems(k).length, rej = items.filter(i => matchesWorkspace(i) && ["rejected", "not_chosen"].includes(i.status)).length;
   const colors = ["--s3", "--s1", "--s3", "--s4", "--s3", "--s2", "--s3", "--s1", "--s3"];
   return `<div class="idle">
     <div class="tiles" aria-hidden="true">${[0, 1, 2, 5, 4, 3, 6, 7, 8].map((o, k) => `<span style="--i:${o};--c:var(${colors[k]})"></span>`).join("")}</div>
@@ -1018,14 +1194,15 @@ function idleHtml() {
     <p>${items.length ? "Nothing needs your review. New work from the agent opens here by itself." : "Agents submit work with goodeye submit. Try goodeye demo to load samples."}</p>
     ${sessHtml()}
     ${items.length ? `<div class="counts">${n("approved")} approved · ${waiting.length} waiting on the agent · ${rej} closed</div>` : ""}
-    ${waiting.length ? `<div class="waitlist"><h3>Waiting on the agent · ${waiting.length}</h3>${waiting.map(i => `<div class="row" data-id="${esc(i.id)}" role="button" tabindex="0" aria-label="${esc(i.title)}" aria-current="${sel.id === i.id ? "true" : "false"}"><div class="thumb">${thumbOf(i)}</div><div style="min-width:0">
+    ${waiting.length ? `<div class="waitlist"><h3>Waiting on the agent · ${waiting.length}</h3>${waiting.map(i => `<div class="row" data-id="${esc(i.id)}" data-asset-id="${esc(i.asset_id)}" role="button" tabindex="0" aria-label="${esc(i.title)}" aria-current="${sel.id === i.id ? "true" : "false"}"><div class="thumb">${thumbOf(i)}</div><div style="min-width:0">
       <div class="t">${esc(i.title)}</div><div class="m"><span class="pill st-changes">Changes requested ${ago(lastDecision(i)?.at)}</span>${(Date.now() - new Date(lastDecision(i)?.at)) / 36e5 >= staleH ? `<span class="stale">stale: the agent is reminded on its next wait</span>` : ""}</div></div></div>`).join("")}</div>` : ""}
   </div>`;
 }
 function wireIdle() { $("#main").querySelectorAll(".row[data-id]").forEach(r => r.onclick = () => select(r.dataset.id)); }
 function showIdle() {
+  rememberFeedback();
   sel = { id: null, version: null, view: "asset", compare: false };
-  history.replaceState(null, "", location.pathname);
+  history.replaceState(null, "", workspaceHash());
   renderQueue(); renderMain(); renderSide();
 }
 
@@ -1047,7 +1224,7 @@ function renderChoice(it, v, latest, draft) {
   const picks = d.ranking.length ? d.ranking.map((k, i) => `${rankName(i)} <b>${esc((opts.find(o => o.key === k) || {}).label || k)}</b>`).join(" · ") : "No picks yet. Click options in order of preference, or press their numbers.";
   const hasNotes = draft.trim() || Object.values(d.notes).some(n => n.trim());
   $("#main").innerHTML = `
-    <div class="head"><div class="eyebrow">${esc(it.project || "Your workspace")} / ${latest ? esc(STATUS[v.status]) : "Version history"}</div><h2>${esc(it.title)}</h2><div class="sub">${esc(it.project ? it.project + " · " : "")}${esc(it.id)} · choice between ${opts.length} options · submitted ${new Date(v.submitted_at).toLocaleString()}</div>${ownerHtml(it)}</div>
+    <div class="head"><div class="eyebrow">${esc(it.project || "Your workspace")} / ${latest ? esc(STATUS[v.status]) : "Version history"}</div><h2>${esc(it.title)}</h2><div class="sub">${esc(it.project ? it.project + " · " : "")}${esc(it.asset_id)} · choice between ${opts.length} options · submitted ${new Date(v.submitted_at).toLocaleString()}</div>${ownerHtml(it)}${organizationHtml(it, v)}</div>
     ${reopenHtml(it)}${checksHtml(v)}${slotHtml(it)}
     <div class="bar"><span class="lbl">Round</span>${it.versions.map(x => `<span class="chip ${x === v ? "on" : ""}" data-v="${esc(x.version)}"><span class="pill st-${x.status}"></span>${esc(x.version)}</span>`).join("")}</div>
     <div class="bar"><span class="lbl">View</span>${["options", ...(v.contexts || [])].map(c => `<span class="chip ${view === c ? "on" : ""}" data-view="${esc(c)}">${c === "options" ? "All options" : "In context: " + esc(CTX[c] || c)}</span>`).join("")}
@@ -1417,7 +1594,7 @@ function foldCards() {
 function renderSideInner() {
   const it = item(sel.id);
   if (!it) {
-    const recent = items.flatMap(i => i.versions.flatMap(v => v.decisions.map(d => ({ ...d, title: i.title })))).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 12);
+    const recent = items.filter(matchesWorkspace).flatMap(i => i.versions.flatMap(v => v.decisions.map(d => ({ ...d, id: i.id, title: i.title })))).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 12);
     $("#side").innerHTML = recent.length ? `<div class="card recent"><h3>Your recent verdicts</h3><ul class="hist">${recent.map(d => `<li style="cursor:pointer" data-go="${esc(d.id)}"><span class="pill st-${d.verdict}">${STATUS[d.verdict]}</span> · <span style="color:var(--text-muted)">${ago(d.at)}</span><div>${esc(d.title)} <span style="color:var(--text-muted)">${esc(d.version)}</span></div>${d.feedback && d.verdict !== "not_chosen" ? `<div class="f">${esc(d.feedback)}</div>` : ""}</li>`).join("")}</ul></div>` : "";
     $("#side").querySelectorAll("[data-go]").forEach(l => l.onclick = () => select(l.dataset.go));
     return;
@@ -1520,7 +1697,7 @@ function renderDeskUndo() {
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2600); }
 
 document.addEventListener("keydown", e => {
-  if ($("#shortcuts").open || e.target.closest(".modal")) return;
+  if ($("dialog[open]") || homeMode || e.target.closest(".modal")) return;
   if (e.altKey && !e.metaKey && !e.ctrlKey) {
     const cur = item(sel.id), isChoice = cur && ver(cur, sel.version).kind === "choice";
     const d = { KeyA: isChoice ? "picked" : "approved", KeyC: "changes", KeyR: "rejected" }[e.code];
@@ -1562,12 +1739,17 @@ async function load(force) {
   }
   const sig = JSON.stringify(data);
   if (!force && sig === lastSig) return;
+  const oldProfileRevision = projects.find(p => p.name === projectFilter)?.revision;
   const oldSel = item(sel.id), oldLen = oldSel ? oldSel.versions.length : 0;
-  items = Array.isArray(data) ? data : data.items; agents = data.agents || []; subscriptions = data.subscriptions || []; claims = data.claims || []; holds = data.holds || []; if (data.mkey && data.mkey !== mkey) { mkey = data.mkey; if (!force) lastSig = ""; } staleH = data.stale_hours || 12; lastSig = sig;
+  projects = data.projects || [];
+  items = (Array.isArray(data) ? data : data.items).map(i => ({ ...i, asset_id: i.id, id: i.key || i.id, versions: i.versions.map(v => ({ ...v, asset_id: v.id, id: i.key || i.id })) })); agents = data.agents || []; subscriptions = data.subscriptions || []; claims = data.claims || []; holds = data.holds || []; if (data.mkey && data.mkey !== mkey) { mkey = data.mkey; if (!force) lastSig = ""; } staleH = data.stale_hours || 12; lastSig = sig;
+  if (!started) { started = true; routeWorkspace(); return; }
+  applyWorkspace();
+  if (homeMode) { renderProjects(); return; }
   renderQueue();
   const it = item(sel.id);
   if (!it) {
-    const want = force && !started ? item(decodeURIComponent(location.hash.slice(1))) : null;
+    const want = null;
     const pending = queueItems("pending")[0];
     if (want) select(want.id);
     else if (pending) { select(pending.id); if (started) toast(`New for review: ${pending.title}`); }
@@ -1577,6 +1759,7 @@ async function load(force) {
   }
   started = true;
   if (it.versions.length !== oldLen) { sel.version = it.versions[it.versions.length - 1].version; renderMain(); toast(`New version: ${it.title} ${sel.version}`); }
+  if (it.versions.length === oldLen && (it.status !== oldSel?.status || it.collection !== oldSel?.collection || oldProfileRevision !== projects.find(p => p.name === projectFilter)?.revision)) renderMain();
   renderSide();
 }
 /* ---------- per-device preferences (localStorage) ---------- */
@@ -1651,13 +1834,14 @@ function wireUndo() {
   b.onclick = undoPending;
 }
 function renderDeck() {
-  const on = isPhone() && deckMode;
+  const on = !homeMode && isPhone() && deckMode;
   document.body.classList.toggle("deckmode", on);
   $("#deck").hidden = !on;
   if (!on || dragging) return;
   document.body.style.setProperty("--tbh", $("#topbar").offsetHeight + "px");
   const cards = deckCards();
-  $("#qpos").innerHTML = subscriptions.length ? `<span class="apill on">● ${subscriptions.length > 1 ? subscriptions.length + " agents watching" : "Agent subscribed"}</span>` : `<span class="apill off">No agent listening</span>`;
+  const watching = subscriptions.filter(x => projectFilter === null || x.project === projectFilter);
+  $("#qpos").innerHTML = watching.length ? `<span class="apill on">● ${watching.length > 1 ? watching.length + " agents watching" : "Agent subscribed"}</span>` : `<span class="apill off">No agent listening</span>`;
   const top = cards[0];
   if (top && deckTop === top.id + "@" + top.versions[top.versions.length - 1].version && $("#deck .card2")) return;
   deckTop = top ? top.id + "@" + top.versions[top.versions.length - 1].version : null;
@@ -2103,7 +2287,7 @@ async function sendDecision(p) {
   sending.add(p.it.id); failedSaves.delete(p.body.request_id);
   deckTop = null; renderSaveErrors(); renderDeck(); renderDeskUndo();
   try {
-    const res = await fetch("/api/decide", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p.body), keepalive: true });
+    const res = await fetch("/api/decide", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(reviewBody(p.body, p.it)), keepalive: true });
     if (!res.ok) throw new Error((await res.json()).error || "save failed");
   } catch (e) {
     sending.delete(p.it.id); p.error = "Save unconfirmed: " + e.message;
@@ -2112,8 +2296,10 @@ async function sendDecision(p) {
     haptic("error"); toast("Save unconfirmed. Your verdict is available to retry.");
     return;
   }
-  if (!sess.start) sess.start = Date.now();
-  const skey = p.body.verdict === "rejected" ? "rejected" : p.body.verdict === "changes" ? "changes" : "approved"; sess[skey]++;
+  if (projectFilter === null || projectFilter === p.it.project) {
+    if (!sess.start) sess.start = Date.now();
+    const skey = p.body.verdict === "rejected" ? "rejected" : p.body.verdict === "changes" ? "changes" : "approved"; sess[skey]++;
+  }
   // Reflect the accepted verdict before refreshing; a failed GET cannot undo a saved POST.
   const current = item(p.it.id);
   if (current && current.versions.at(-1).version === p.body.version) current.status = p.body.verdict;
@@ -2333,6 +2519,13 @@ function fitMockups() {
 }
 const fitObserver = new ResizeObserver(() => fitMockups());
 function afterRender() {
+  document.querySelectorAll("[data-collection-item]").forEach(el => el.onchange = async () => {
+    const it = item(el.dataset.collectionItem); if (!it) return;
+    el.disabled = true;
+    try { const r = await fetch("/api/collection", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({id: it.asset_id, project: it.project, collection: el.value}) }); if (!r.ok) throw new Error((await r.json()).error); await load(true); toast("Collection updated"); }
+    catch (e) { el.value = it.collection || ""; toast(e.message); }
+    finally { el.disabled = false; }
+  });
   document.querySelectorAll(".chip[data-v], .chip[data-view], .chip[data-cmp], .chip[data-cols]").forEach(el => {
     el.setAttribute("role", "button"); el.tabIndex = 0; el.setAttribute("aria-pressed", String(el.classList.contains("on")));
   });
@@ -2396,13 +2589,13 @@ function flashPrev(on) {
     haptic("tick");
   } else stage.querySelector(".flash")?.remove();
 }
-document.addEventListener("keydown", e => { if (!$("#shortcuts").open && (e.key === "c" || e.key === "C") && !e.repeat && !/INPUT|TEXTAREA/.test(e.target.tagName) && !e.metaKey && !e.ctrlKey && !e.altKey) flashPrev(true); });
+document.addEventListener("keydown", e => { if (!$("dialog[open]") && !homeMode && (e.key === "c" || e.key === "C") && !e.repeat && !/INPUT|TEXTAREA/.test(e.target.tagName) && !e.metaKey && !e.ctrlKey && !e.altKey) flashPrev(true); });
 document.addEventListener("keyup", e => { if (e.key === "c" || e.key === "C") flashPrev(false); });
 let press = null;
 document.addEventListener("pointerdown", e => { if (!deckMode || !isPhone()) { if (e.target.closest(".stage") && !e.target.closest("button, input, .pbar")) press = setTimeout(() => flashPrev(true), 380); } });
 ["pointerup", "pointercancel", "pointerleave"].forEach(t => document.addEventListener(t, () => { clearTimeout(press); flashPrev(false); }));
-addEventListener("hashchange", () => { const id = decodeURIComponent(location.hash.slice(1)); if (id && id !== sel.id && item(id)) select(id); });
-load(true).catch(() => { $("#main").innerHTML = `<div class="empty">Your board is reconnecting. It will retry automatically.</div>`; });
+addEventListener("hashchange", routeWorkspace);
+load(true).catch(() => { $(homeMode ? "#projects-home" : "#main").innerHTML = `<div class="empty">Your board is reconnecting. It will retry automatically.</div>`; });
 startPoll();
 </script>
 </body>

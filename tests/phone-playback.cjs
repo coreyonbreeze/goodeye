@@ -51,7 +51,7 @@ function run(command,args,env=process.env){
   await page.route('**/api/clientlog',route=>route.fulfill({status:200,body:'{}'}));
   let fail=scenario==='network retry';
   await page.route('**/files/**',route=> fail&&route.request().url().includes('.mp4')?route.fulfill({status:503,body:'Temporary failure'}):route.continue());
-  await page.goto(url);
+  await page.goto(url+'/#inbox');
   await page.waitForSelector('#deck .card2:not(.behind) video.dvid');
   if(scenario==='blocked autoplay'){
    await page.locator('#deck .card2:not(.behind) .vplay').click();
@@ -74,7 +74,7 @@ function run(command,args,env=process.env){
  await context.addInitScript(()=>localStorage.setItem('goodeye.coach','1'));
  const page=await context.newPage();
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(url);
+ await page.goto(url+'/#inbox');
  await page.waitForSelector('#deck .card2:not(.behind) video.dvid');
  let loseResponse=true;
  await page.route('**/api/decide',async route=>{

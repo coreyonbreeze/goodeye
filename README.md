@@ -55,14 +55,38 @@ you:   open http://localhost:4400, look, click Approve with a note
 agent: wakes with "APPROVED WITH NOTES ... Do NOT resubmit", applies the note, moves on
 ```
 
+## Project workspaces
+
+![Projects home, shown with synthetic example assets](docs/projects.png)
+
+The board opens on **Projects**. Each project has its own review queue, collections, agent activity, icon, and accent. The **All-project inbox** combines queues when you want to review everything. Existing submissions appear in their current projects automatically. Items without a project appear in **Unassigned**.
+
+Open **Brand & direction** inside a project to set its logo references, color palette, typography, writing voice, visual and motion rules, reference material, and export requirements. Logo and reference fields hold paths or links; the board does not fetch them. These guidelines appear in `goodeye brief --project NAME`. Each submitted version saves its profile revision and a copy of the guidelines. Older submissions remain unchanged. Two editors cannot silently overwrite the same profile revision.
+
+```sh
+goodeye projects
+goodeye brief --project Mosaic
+goodeye submit hero.png --id hero --project Mosaic --collection Website --reasoning reasoning.json
+goodeye submit menu.png --id hero --project "Castle Heist" --collection UI --reasoning reasoning.json
+goodeye organize hero --project Mosaic --collection Campaigns
+goodeye project Mosaic                            # show profile and current revision
+goodeye project Mosaic --config project.json       # update; include expected_revision
+```
+
+The same asset ID can exist in different projects. Always pass `--project` when submitting, assigning slots, or handling an ID shared by several projects. Legacy commands that omit a project still work when the ID is unambiguous. Collections organize an item's full review history; use the collection selector above its preview or `goodeye organize`. A new version inherits its collection unless `--collection` overrides it.
+
+New files live under `assets/_projects/<project-key>/<id>/<version>`. Existing files keep their original paths and remain readable. Exporting all projects creates a separate directory for each project key; the manifest includes project names, collections, and profile snapshots. A single-project export keeps the `<id>/<version>-<file>` layout.
+
+Projects organize a shared local board. They are not separate access permissions: anyone authorized to use the board can open every project. Project names remain stable so watcher subscriptions, claims, and history keep their identity.
+
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `goodeye submit FILE --id ID --reasoning R.json` | Submit a new version of an item. Options: `--title`, `--project`, `--version`, `--context a,b`, `--scores S.json`, `--slot KEY --slot-label NAME`, `--as NAME` (claims the item) |
+| `goodeye submit FILE --id ID --reasoning R.json` | Submit a new version of an item. Options: `--title`, `--project`, `--collection`, `--version`, `--context a,b`, `--scores S.json`, `--slot KEY --slot-label NAME`, `--as NAME` (claims the item) |
 | `goodeye submit --options O.json --id ID --reasoning R.json` | Submit a choice between 2 to 9 options |
 | `goodeye wait --project P --as NAME [--timeout S]` | Block until a verdict for watcher NAME arrives, print it with a `next:` instruction, exit. Without `--as`: every verdict (terminal fallback) |
-| `goodeye brief --project P [--as NAME]` | Everything a new session needs: watchers, owners, holds, open items, and the commands to join |
+| `goodeye brief --project P [--as NAME]` | Everything a new session needs: brand direction, collections, watchers, owners, holds, open items, and the commands to join |
 | `goodeye watch` / `unwatch --project P --as NAME` | Register or remove a watcher (an agent session). Many per project |
 | `goodeye handoff --project P --from OLD --to NEW` | Move a watcher's claims, cursor and unacknowledged deliveries to a new session |
 | `goodeye claim ID-OR-GLOB --project P --as NAME` / `release` / `claims` | Own items; the first claim wins |
@@ -191,7 +215,7 @@ On a phone the board is a card deck:
 
 ## Desktop review
 
-The review studio uses warm light and dark themes, a dedicated preview area, and a compact queue. Search by title, ID, or project; use the project selector to narrow the workspace. Feedback drafts stay with each asset and version while you navigate. Placement warnings expand in place, and the desktop Undo control stays in the header.
+The review studio uses warm light and dark themes, a dedicated preview area, and a compact queue. Search by title, ID, or project; open a project from Projects or switch projects from the queue. Feedback drafts stay with each asset and version while you navigate. Placement warnings expand in place, and the desktop Undo control stays in the header.
 
 Press **/** to search or **?** for keyboard shortcuts. Queue entries and version controls also work with the keyboard. The header reports connection loss and reconnects automatically.
 

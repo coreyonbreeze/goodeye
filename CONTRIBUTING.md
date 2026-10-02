@@ -25,3 +25,13 @@ node tests/studio.cjs
 ```
 
 This checks queue search, project isolation, per-version feedback drafts, keyboard controls, placement details, desktop action visibility, dark mode, and phone navigation. It uses an isolated demo store.
+
+Project integration checks (Playwright with WebKit):
+
+```sh
+node tests/projects.cjs
+# Optional screenshots from the synthetic test fixture:
+SCREENSHOTS=/tmp/goodeye-projects node tests/projects.cjs
+```
+
+This checks empty project creation, duplicate-ID drafts and verdicts, scoped agents and history, collection assignment, immutable profile display, delayed profile saves, and phone deep links. `tests/test_projects.py` covers scoped storage and exports, legacy file paths, profile conflicts, and collection inheritance.

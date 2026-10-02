@@ -42,6 +42,16 @@ When in doubt and there is more than one image, or anything will ship, use GoodE
 
 If `goodeye` is not installed, tell the user to run `./install.sh` from a clone of the GoodEye repository.
 
+## Project and direction
+
+Before making or revising work, run `goodeye brief --project <Project>`. Read the current brand/art-direction profile and collections. Follow its logo, palette, type, voice, visual, motion, and export rules. If guidelines are empty, do not present invented rules as established branding.
+
+Always include the exact same `--project` on submissions, claims, waits, and slot assignments. Asset IDs are unique within a project; Mosaic and Castle Heist can both have `hero`. An omitted project is accepted only when the existing ID resolves unambiguously.
+
+Use `--collection <Name>` to place new work in an existing collection. Revisions inherit the collection unless you override it. Use `goodeye organize <id> --project <Project> --collection <Name>` to reorganize existing work. A submission automatically snapshots the current profile revision; read the brief again when starting a new revision.
+
+`goodeye project <Project>` shows the profile. Updating it with `--config profile.json` requires `expected_revision` equal to the current revision. Do not silently change approved brand rules to match your output. Logo and reference fields contain text paths or links; inspect those sources when needed.
+
 ## 1. Gate first
 
 If the project has a judge (an LLM judge, a linter, measured checks), run it before you submit. Submit only work
@@ -72,7 +82,7 @@ you would defend. If the judge fails it and you still submit, say why in `reason
 ## 3. Submit
 
 ```bash
-goodeye submit <file> --id <stable-id> --title "<human title>" --project <Project> \
+goodeye submit <file> --id <stable-id> --title "<human title>" --project <Project> --collection <Collection> \
   --context <placements> --reasoning reasoning.json [--scores scores.json]
 ```
 

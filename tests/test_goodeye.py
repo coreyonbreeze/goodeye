@@ -229,7 +229,8 @@ class GoodEyeTest(unittest.TestCase):
 
     def test_reads_are_limited_to_the_store(self):
         self.cli("submit", self.png, "--id", "banner", "--reasoning", self.reason)
-        self.assertEqual(self.get("/files/banner/v1/a.png")[0], 200)
+        v = json.loads(self.get("/api/items")[1])["items"][0]["versions"][0]
+        self.assertEqual(self.get("/files/" + v["dir"] + "/a.png")[0], 200)
         self.assertEqual(self.get("/files/../decisions.jsonl")[0], 404)
         self.assertEqual(self.get("/files/%2e%2e/decisions.jsonl")[0], 404)
         self.assertEqual(self.get("/api/items", host="evil.example")[0], 403)

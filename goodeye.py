@@ -123,12 +123,114 @@ def kind_of(path):
 
 # ---------- store ----------
 
-def versions_of(asset_id):
-    d = os.path.join(ASSETS, asset_id)
-    if not os.path.isdir(d):
-        return []
-    metas = [read_json(os.path.join(d, v, "meta.json")) for v in os.listdir(d)]
-    return sorted([m for m in metas if m], key=lambda m: m["seq"])
+def project_key(name):
+    return hashlib.sha256(name.encode()).hexdigest()[:24]
+
+
+def item_key(project, asset_id):
+    return project_key(project) + ":" + asset_id
+
+
+def asset_groups():
+    """Read both legacy directories and project directories without moving frozen files."""
+    groups = {}
+    roots = [ASSETS]
+    scoped = os.path.join(ASSETS, "_projects")
+    if os.path.isdir(scoped):
+        roots += [os.path.join(scoped, p) for p in os.listdir(scoped)]
+    for root in roots:
+        if not os.path.isdir(root):
+            continue
+        for asset_id in os.listdir(root):
+            d = os.path.join(root, asset_id)
+            if not ID_RE.fullmatch(asset_id) or not os.path.isdir(d):
+                continue
+            for version in os.listdir(d):
+                m = read_json(os.path.join(d, version, "meta.json"))
+                if m:
+                    groups.setdefault((m.get("project") or "", asset_id), []).append(m)
+    return {key: sorted(vs, key=lambda m: m["seq"]) for key, vs in groups.items()}
+
+
+def versions_of(asset_id, project=None):
+    groups = asset_groups()
+    if project is None:
+        matches = [p for p, i in groups if i == asset_id]
+        if len(matches) > 1:
+            raise ValueError(f"{asset_id} exists in several projects; specify --project (or project in JSON)")
+        project = matches[0] if matches else ""
+    return groups.get((project, asset_id), [])
+
+
+PROFILE_FIELDS = ("logos", "colors", "typography", "voice", "references", "visual_rules", "export_rules")
+
+
+def project_record(name):
+    return {"name": name, "key": project_key(name), "icon": name[:2].upper() or "—", "accent": "#326653",
+            "description": "", "collections": [], "revision": 0, "profile": {k: "" for k in PROFILE_FIELDS}}
+
+
+def project_catalog(items=None):
+    items = all_items() if items is None else items
+    saved = read_json(os.path.join(HOME, "projects.json"), {}) or {}
+    names = set(saved) | {i["project"] for i in items}
+    out = []
+    for name in sorted(names, key=str.casefold):
+        p = {**project_record(name), **saved.get(name, {})}
+        work = [i for i in items if i["project"] == name]
+        p["collections"] = sorted(set(p["collections"]) | {i["collection"] for i in work if i.get("collection")}, key=str.casefold)
+        p.update(pending=sum(i["status"] == "pending" for i in work), changes=sum(i["status"] == "changes" for i in work),
+                 total=len(work), updated=max((i["updated"] for i in work), default=p.get("updated", "")))
+        out.append(p)
+    return out
+
+
+def save_project(body):
+    name = body.get("name")
+    if not isinstance(name, str) or not name.strip() or name != name.strip() or len(name) > 120:
+        raise ValueError("project name must be 1–120 characters without surrounding spaces")
+    saved = read_json(os.path.join(HOME, "projects.json"), {}) or {}
+    old = saved.get(name, project_record(name))
+    if type(body.get("expected_revision")) is not int or body["expected_revision"] != old["revision"]:
+        raise ValueError("project changed; reload its profile before saving")
+    result = dict(old)
+    for field, limit in (("icon", 12), ("description", 500), ("accent", 7)):
+        value = body.get(field, old[field])
+        if not isinstance(value, str) or len(value) > limit:
+            raise ValueError(f"invalid {field}")
+        result[field] = value.strip()
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", result["accent"]):
+        raise ValueError("accent must be a six-digit hex color")
+    collections = body.get("collections", old["collections"])
+    if not isinstance(collections, list) or len(collections) > 100 or any(not isinstance(c, str) or not c.strip() or len(c) > 100 for c in collections):
+        raise ValueError("collections must be a list of names (100 characters each)")
+    result["collections"] = list(dict.fromkeys(c.strip() for c in collections))
+    profile = body.get("profile", old["profile"])
+    if not isinstance(profile, dict) or set(profile) - set(PROFILE_FIELDS):
+        raise ValueError("unknown profile fields")
+    result["profile"] = {**old["profile"], **profile}
+    if any(not isinstance(v, str) or len(v) > 20000 for v in result["profile"].values()):
+        raise ValueError("profile fields must be text, up to 20,000 characters each")
+    result.update(revision=old["revision"] + 1, updated=now())
+    saved[name] = result
+    write_json(os.path.join(HOME, "projects.json"), saved)
+    return result
+
+
+def set_collection(body):
+    asset_id, project, collection = body.get("id"), body.get("project"), body.get("collection")
+    if not isinstance(asset_id, str) or not ID_RE.fullmatch(asset_id) or not isinstance(project, str):
+        raise ValueError("id and project are required")
+    if not isinstance(collection, str) or len(collection) > 100:
+        raise ValueError("collection must be text, up to 100 characters")
+    vs = versions_of(asset_id, project)
+    if not vs:
+        raise ValueError("unknown item")
+    # Organization is mutable; the submitted files and profile snapshots stay frozen.
+    assignments = read_json(os.path.join(HOME, "collections.json"), {}) or {}
+    assignments[item_key(project, asset_id)] = {"collection": collection.strip(), "seq": vs[-1]["seq"]}
+    write_json(os.path.join(HOME, "collections.json"), assignments)
+    return {"ok": True}
 
 
 def decisions():
@@ -163,26 +265,35 @@ def append_decisions(rows):
             f.write((json.dumps(row, allow_nan=False) + "\n").encode())
 
 
+def item_collection(meta, assignments):
+    assignment = assignments.get(item_key(meta.get("project") or "", meta["id"]))
+    if assignment and assignment["seq"] >= meta["seq"]:
+        return assignment["collection"]
+    return meta.get("collection", "")
+
+
 def all_items():
-    decs = decisions()
+    by_dir = {}
     by_key = {}
-    for d in decs:
-        by_key.setdefault(f'{d["id"]}@{d["version"]}', []).append(d)
+    for d in decisions():
+        by_key.setdefault((d.get("project") or "", d["id"], d["version"]), []).append(d)
+        if d.get("dir"):
+            by_dir.setdefault(d["dir"], []).append(d)
+    assignments = read_json(os.path.join(HOME, "collections.json"), {}) or {}
     items = []
-    if os.path.isdir(ASSETS):
-        for asset_id in os.listdir(ASSETS):
-            vs = versions_of(asset_id)
-            if not vs:
-                continue
-            for v in vs:
-                v["decisions"] = by_key.get(f'{asset_id}@{v["version"]}', [])
-                v["checks"] = checks_for(v)
-                add_dims(v)
-                last = v["decisions"][-1]["verdict"] if v["decisions"] else "pending"
-                v["status"] = "pending" if last == "reopened" else last
-            latest = vs[-1]
-            items.append({"id": asset_id, "project": latest.get("project", ""), "title": latest.get("title", asset_id),
-                          "status": latest["status"], "updated": latest["submitted_at"], "slot": latest.get("slot"), "versions": vs})
+    for (project, asset_id), vs in asset_groups().items():
+        for v in vs:
+            v["decisions"] = by_dir.get(v["dir"], by_key.get((project, asset_id, v["version"]), []))
+            v["checks"] = checks_for(v)
+            add_dims(v)
+            last = v["decisions"][-1]["verdict"] if v["decisions"] else "pending"
+            v["status"] = "pending" if last == "reopened" else last
+        latest = vs[-1]
+        key = item_key(project, asset_id)
+        items.append({"id": asset_id, "key": key, "project": project, "title": latest.get("title", asset_id),
+                      "collection": item_collection(latest, assignments),
+                      "status": latest["status"], "updated": max([latest["submitted_at"]] + [d["at"] for v in vs for d in v["decisions"]]),
+                      "slot": latest.get("slot"), "versions": vs})
     items.sort(key=lambda i: i["updated"], reverse=True)
     return items
 
@@ -379,7 +490,7 @@ def notify_new(meta, force=False):
             host = f"{addrs[0][1]}:{PORT}"
     title = f"{meta.get('project') + ': ' if meta.get('project') else ''}{meta['title']}"
     req = urllib.request.Request(url, data=f"{meta['version']} is ready for review".encode(), method="POST",
-                                 headers={"Title": title.encode("ascii", "replace").decode(), "Click": f"http://{host}/#{meta['id']}",
+                                 headers={"Title": title.encode("ascii", "replace").decode(), "Click": f"http://{host}/#{item_key(meta.get('project') or '', meta['id'])}",
                                           "Tags": "eyes"})
     try:
         urllib.request.urlopen(req, timeout=5).close()
@@ -490,28 +601,31 @@ def load_options(path):
     return out, rec, spec.get("question", "")
 
 
-def parse_slot(key, label):
+def parse_slot(key, label, project):
     if not ID_RE.match(key or ""):
         die("slot key must be lowercase letters, digits, dot, dash, underscore")
     for it in all_items():   # reuse the label already on the slot so every member says the same thing
-        if it.get("slot") and it["slot"]["key"] == key and not label:
+        if it["project"] == project and it.get("slot") and it["slot"]["key"] == key and not label:
             return it["slot"]
     return {"key": key, "label": label or key}
 
 
 def cmd_slot(a):
     """Put existing items (all their versions) into one slot."""
-    slot = parse_slot(a.key, a.label)
-    for asset_id in a.ids:
-        vs = versions_of(asset_id)
-        if not vs:
-            die(f"no item {asset_id}")
-        for v in vs:
-            path = os.path.join(ASSETS, v["dir"], "meta.json")
-            m = read_json(path)
-            m["slot"] = slot
-            write_json(path, m)
-        print(f"{asset_id} -> slot {slot['key']} ({slot['label']})")
+    with store_lock():
+        groups = [versions_of(asset_id, a.project) for asset_id in a.ids]
+        if any(not vs for vs in groups):
+            die("one or more items do not exist in this project")
+        projects = {vs[-1].get("project") or "" for vs in groups}
+        if len(projects) != 1:
+            die("a slot must belong to one project; specify --project")
+        slot = parse_slot(a.key, a.label, projects.pop())
+        for vs in groups:
+            for v in vs:
+                path = os.path.join(ASSETS, v["dir"], "meta.json")
+                v["slot"] = slot
+                write_json(path, v)
+            print(f"{vs[-1]['id']} -> slot {slot['key']} ({slot['label']})")
 
 
 def save_submission(a):
@@ -529,7 +643,14 @@ def save_submission(a):
     reasoning = read_json(a.reasoning)
     if reasoning is None:
         die(f"cannot read reasoning JSON {a.reasoning}")
-    prior = versions_of(a.id)
+    if a.project is not None and (not a.project.strip() or a.project != a.project.strip() or len(a.project) > 120):
+        die("project name must be 1–120 characters without surrounding spaces")
+    prior = versions_of(a.id, a.project)
+    project = a.project if a.project is not None else (prior[-1].get("project") or "" if prior else "")
+    collection = getattr(a, "collection", None)
+    if collection is not None and len(collection) > 100:
+        die("collection must be at most 100 characters")
+    profile = (read_json(os.path.join(HOME, "projects.json"), {}) or {}).get(project, project_record(project))
     validate_reasoning(reasoning, bool(prior))
     scores, judge = normalize_scores(read_json(a.scores) if a.scores else None)
     if a.scores and not scores:
@@ -544,7 +665,7 @@ def save_submission(a):
     for c in contexts:
         if c not in CONTEXTS:
             die(f"unknown context {c}; use one of {', '.join(CONTEXTS)}")
-    vdir = os.path.join(ASSETS, a.id, re.sub(r"[^A-Za-z0-9._-]", "_", version))
+    vdir = os.path.join(ASSETS, "_projects", project_key(project), a.id, version)
     with new_version_dir(vdir) as staging:
         if a.options:
             os.makedirs(os.path.join(staging, "options"))
@@ -558,14 +679,16 @@ def save_submission(a):
         else:
             fname, kind = os.path.basename(src), kind_of(src)
             shutil.copy2(src, os.path.join(staging, fname))
-        meta = {"id": a.id, "version": version, "seq": seq, "project": a.project or (prior[-1].get("project") if prior else ""),
+        meta = {"id": a.id, "version": version, "seq": seq, "project": project,
+                "collection": collection.strip() if collection is not None else (item_collection(prior[-1], read_json(os.path.join(HOME, "collections.json"), {}) or {}) if prior else ""),
+                "profile_revision": profile["revision"], "profile_snapshot": profile["profile"],
                 "title": a.title or (prior[-1]["title"] if prior else a.id), "kind": kind, "file": fname,
                 "source_path": src, "size_bytes": os.path.getsize(os.path.join(staging, fname)), "contexts": contexts or (prior[-1]["contexts"] if prior else []),
                 "submitted_at": now(), "media": {} if kind == "choice" else probe_media(src, kind), "reasoning": reasoning, "scores": scores, "judge": judge,
                 "dir": os.path.relpath(vdir, ASSETS)}
         if kind == "choice":
             meta.update(options=options, recommended=recommended, question=question)
-        slot = parse_slot(a.slot, a.slot_label) if a.slot else (prior[-1].get("slot") if prior else None)
+        slot = parse_slot(a.slot, a.slot_label, project) if a.slot else (prior[-1].get("slot") if prior else None)
         if slot:
             meta["slot"] = slot
         meta["checks"] = checks_for(meta, staging)
@@ -578,7 +701,7 @@ def cmd_submit(a):
         meta = save_submission(a)
     version = meta["version"]
     ensure_server()
-    print(f"submitted {a.id}@{version} ({meta['kind']}) -> {URL}/#{a.id}")
+    print(f"submitted {a.id}@{version} ({meta['kind']}) -> {URL}/#{item_key(meta.get('project') or '', a.id)}")
     for c in meta["checks"]:
         print(f"  SPEC WARNING [{c['context']}]: {c['msg']}")
     if meta["checks"]:
@@ -701,6 +824,15 @@ def cmd_brief(a):
     holds = {h["item"]: h for h in store.holds(project)}
     print(f"GoodEye brief: project {project}  board {URL}")
     print(f"store {HOME}")
+    profile = next((p for p in project_catalog(items) if p["name"] == project), project_record(project))
+    print(f"\nBrand / art direction — revision {profile['revision']}")
+    for field, value in profile["profile"].items():
+        if value:
+            print(f"  {field}: {value}")
+    if not any(profile["profile"].values()):
+        print("  No guidelines set. Do not invent established brand rules.")
+    print("Collections: " + (", ".join(profile["collections"]) or "none"))
+    print(f"Submit with --project {shlex.quote(project)} --collection NAME; every version snapshots these guidelines.")
     print("\nWatchers (agent sessions that receive this project's verdicts):")
     for w in watchers:
         c = w["counts"]
@@ -819,12 +951,12 @@ def remind(project, reminded, keep):
     """Changes the reviewer asked for that never came back: once per 6 h, never for held items."""
     stale = [i for i in all_items() if i["status"] == "changes" and (not project or i["project"] == project) and keep(i)
              and hours_since(i["versions"][-1]["decisions"][-1]["at"]) >= stale_hours()
-             and hours_since(reminded.get(i["id"] + "@" + i["versions"][-1]["version"], "")) >= 6]
+             and hours_since(reminded.get(item_key(i["project"], i["id"]) + "@" + i["versions"][-1]["version"], "")) >= 6]
     for i in stale:
         v = i["versions"][-1]
         print(f"REMINDER: changes requested {hours_since(v['decisions'][-1]['at']):.0f} h ago on {i['id']}@{v['version']} ({i['title']}); no new version yet.")
         print(f"  feedback: {v['decisions'][-1]['feedback'].strip()}")
-        reminded[i["id"] + "@" + v["version"]] = now()
+        reminded[item_key(i["project"], i["id"]) + "@" + v["version"]] = now()
     if stale:
         write_json(REMINDED, reminded)
     return bool(stale)
@@ -1224,7 +1356,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if path == "/api/items":
             extra = {"mkey": media_key()} if LAN and not self.host_is_local() and self.has_token() else {}
             store = delivery_store()
-            return self.send(200, {"items": all_items(), "agents": agents_alive(), "subscriptions": store.status(), "claims": store.claims(), "holds": store.holds(), "stale_hours": stale_hours(), **extra})
+            items = all_items()
+            return self.send(200, {"items": items, "projects": project_catalog(items), "agents": agents_alive(), "subscriptions": store.status(), "claims": store.claims(), "holds": store.holds(), "stale_hours": stale_hours(), **extra})
         if path.startswith("/files/"):
             rel = urllib.parse.unquote(path[len("/files/"):])
             full = os.path.realpath(os.path.join(ASSETS, rel))
@@ -1284,7 +1417,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not self.allowed_host() or not self.allowed_origin():
             return self.send(403, {"error": "forbidden origin"})
         route = urllib.parse.urlparse(self.path).path
-        if route not in ("/api/decide", "/api/settings", "/api/clientlog"):
+        if route not in ("/api/decide", "/api/settings", "/api/clientlog", "/api/project", "/api/collection"):
             return self.send(404, {"error": "not found"})
         # A JSON content type forces a CORS preflight for cross-site callers, which this server never approves.
         if (self.headers.get("Content-Type") or "").split(";")[0].strip().lower() != "application/json":
@@ -1313,7 +1446,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if route == "/api/settings":
             return self.save_settings(body)
         with store_lock():
-            return self.save_decision(body)
+            try:
+                if route == "/api/project":
+                    return self.send(200, save_project(body))
+                if route == "/api/collection":
+                    return self.send(200, set_collection(body))
+                return self.save_decision(body)
+            except ValueError as exc:
+                return self.send(409, {"error": str(exc)})
 
     def save_decision(self, body):
         request_id = body.get("request_id")
@@ -1339,11 +1479,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         notes = any(str(r.get("note", "")).strip() for r in rows_in)
         if verdict == "changes" and not feedback.strip() and not notes:
             return self.send(400, {"error": "say what to change"})
-        meta = next((v for v in versions_of(str(body.get("id", ""))) if v["version"] == body.get("version")), None)
+        if "project" in body and not isinstance(body["project"], str):
+            return self.send(400, {"error": "project must be text"})
+        meta = next((v for v in versions_of(str(body.get("id", "")), body.get("project")) if v["version"] == body.get("version")), None)
         if not meta:
             return self.send(404, {"error": "unknown asset version"})
         if verdict == "reopened":
-            cur = next((i for i in all_items() if i["id"] == meta["id"]), None)
+            cur = next((i for i in all_items() if i["id"] == meta["id"] and i["project"] == (meta.get("project") or "")), None)
             if not cur or cur["versions"][-1]["version"] != meta["version"] or cur["status"] not in ("rejected", "not_chosen"):
                 return self.send(400, {"error": "only a rejected or not-chosen latest version can be reopened"})
         d = {"decision_id": uuid.uuid4().hex, "id": meta["id"], "version": meta["version"], "dir": meta["dir"],
@@ -1359,7 +1501,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if verdict == "changes" and not feedback.strip() and not any(
                 r["note"].strip() for r in d.get("ranking", []) + d.get("option_notes", [])):
             return self.send(400, {"error": "say what to change on a valid option"})
-        latest = versions_of(meta["id"])[-1]
+        latest = versions_of(meta["id"], meta.get("project") or "")[-1]
         if latest["version"] != meta["version"]:
             return self.send(409, {"error": "a newer version is ready; refresh before reviewing"})
         if request_id:
@@ -1540,7 +1682,7 @@ def cmd_export(a):
             opt = next((o for o in v["options"] if o["key"] == d["ranking"][0]["key"]), None)
             rel = "options/" + opt["file"] if opt else rel
         src = os.path.join(ASSETS, v["dir"], rel)
-        dest_dir = os.path.join(a.dir, it["id"])
+        dest_dir = os.path.join(a.dir, *([] if a.project else [project_key(it["project"])]), it["id"])
         os.makedirs(dest_dir, exist_ok=True)
         dest = os.path.join(dest_dir, f"{re.sub(r'[^A-Za-z0-9._-]', '_', v['version'])}-{os.path.basename(rel)}")
         shutil.copy2(src, dest)
@@ -1548,6 +1690,7 @@ def cmd_export(a):
         notes += [f"{r['key']}: {r['note'].strip()}" for r in (d.get("ranking") or []) + (d.get("option_notes") or []) if r.get("note", "").strip()]
         manifest.append({"id": it["id"], "title": it["title"], "project": it["project"], "version": v["version"],
                          "verdict": d["verdict"], "approved_at": d["at"], "file": os.path.relpath(dest, a.dir),
+                         "collection": it["collection"], "profile_revision": v.get("profile_revision"), "profile_snapshot": v.get("profile_snapshot"),
                          "notes_to_apply": notes, "source_path": v.get("source_path", "")})
     write_json(os.path.join(a.dir, "manifest.json"), manifest)
     flagged = sum(1 for m in manifest if m["notes_to_apply"])
@@ -1600,6 +1743,7 @@ def main():
     s.add_argument("--id", required=True)
     s.add_argument("--title")
     s.add_argument("--project")
+    s.add_argument("--collection", help="collection within the project")
     s.add_argument("--version")
     s.add_argument("--context", help=",".join(CONTEXTS))
     s.add_argument("--reasoning", required=True, help="JSON: summary, decisions[], changes[] (required from v2)")
@@ -1629,6 +1773,15 @@ def main():
     sl.add_argument("key")
     sl.add_argument("ids", nargs="+")
     sl.add_argument("--label")
+    sl.add_argument("--project")
+    pr = sub.add_parser("project", help="show or update a project profile")
+    pr.add_argument("name")
+    pr.add_argument("--config", help="JSON profile including expected_revision; omit to show current values")
+    org = sub.add_parser("organize", help="assign an item to a collection")
+    org.add_argument("id")
+    org.add_argument("--project", required=True)
+    org.add_argument("--collection", required=True)
+    sub.add_parser("projects", help="list project workspaces")
     su = sub.add_parser("subscribe", help="0.7 interface: wake an existing Codex thread on future project verdicts (same as watch --runtime codex)")
     su.add_argument("--project", required=True)
     su.add_argument("--thread", help="exact UUID; defaults to CODEX_THREAD_ID")
@@ -1696,6 +1849,25 @@ def main():
                  "retry-delivery", "claim", "release", "claims", "hold", "unhold", "handoff"):
         cmd_subscription(a)
         return
+    if a.cmd == "projects":
+        print(json.dumps(project_catalog(), indent=2))
+        return
+    if a.cmd == "project":
+        if a.config:
+            body = read_json(a.config)
+            if not isinstance(body, dict):
+                die("config must be a JSON object")
+            with store_lock():
+                result = save_project({**body, "name": a.name})
+        else:
+            result = next((p for p in project_catalog() if p["name"] == a.name), project_record(a.name))
+        print(json.dumps(result, indent=2))
+        return
+    if a.cmd == "organize":
+        with store_lock():
+            set_collection(vars(a))
+        print(f"{a.id} -> {a.project} / {a.collection or 'Unsorted'}")
+        return
     if a.cmd == "brief":
         cmd_brief(a)
         return
@@ -1707,4 +1879,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except ValueError as exc:
+        die(str(exc))
