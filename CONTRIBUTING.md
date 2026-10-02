@@ -15,4 +15,4 @@ node tests/phone-playback.cjs
 PLAYWRIGHT_MODULE=/absolute/path/to/node_modules/playwright node tests/phone-playback.cjs
 ```
 
-This checks normal playback, a blocked autoplay attempt followed by a tap, and retry after a failed download. It does not verify a physical iPhone or its Home Screen app.
+This checks normal playback, a blocked autoplay attempt followed by a tap, retry after a failed download, overlapping verdict prevention, retry after a lost save response, and a failed refresh after a successful save. It does not verify a physical iPhone or its Home Screen app.

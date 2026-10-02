@@ -598,7 +598,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const STATUS = { pending: "Needs review", changes: "Changes requested", approved: "Approved", rejected: "Rejected", picked: "Picked", not_chosen: "Not chosen", reopened: "Reopened" };
 const OPEN = ["pending", "changes"], FILLED = ["approved", "picked"];
-const sibsOf = it => it && it.slot ? items.filter(x => x.slot && x.slot.key === it.slot.key) : [];
+const sibsOf = it => it && it.slot ? items.filter(x => x.project === it.project && x.slot && x.slot.key === it.slot.key) : [];
 const toCloseFor = it => sibsOf(it).filter(s => s.id !== it.id && [...OPEN, ...FILLED].includes(s.status));
 const thumbOf = i => { const v = i.versions[i.versions.length - 1]; return v.kind === "video" ? `<video src="${fileUrl(v)}#t=1" muted preload="metadata"></video>` : `<img src="${fileUrl(v)}" loading="lazy">`; };
 const inFilter = (i, f) => f === "all" || i.status === f || (f === "approved" && i.status === "picked");
@@ -621,7 +621,7 @@ const fileUrl = v => {
   return `/files/${v.dir.split("/").map(encodeURIComponent).join("/")}/${v.file.split("/").map(encodeURIComponent).join("/")}${query.size ? `?${query}` : ""}`;
 };
 function clientLog(ev) {           // phone troubleshooting: what the video player reports goes to ~/.goodeye/client.log
-  try { fetch("/api/clientlog", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...ev, ua: navigator.userAgent, standalone: !!navigator.standalone }), keepalive: true }); } catch (e) {}
+  try { fetch("/api/clientlog", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...ev, ua: navigator.userAgent, standalone: !!navigator.standalone }), keepalive: true }).catch(() => {}); } catch (e) {}
 }
 const item = id => items.find(i => i.id === id);
 const ver = (it, version) => it.versions.find(v => v.version === version) || it.versions[it.versions.length - 1];
@@ -1314,9 +1314,9 @@ async function decide(verdict, confirmed) {
   // Same undo window as the phone: nothing is sent until it runs out.
   const closingN = FILLED.includes(verdict) ? toCloseFor(it).length : 0, below = v.judge && v.judge.pass === false;
   const label = `${STATUS[verdict]}${fb.trim() && FILLED.includes(verdict) ? " with notes" : ""}${closingN ? ` · closes ${closingN}` : ""}`;
+  if (!queueDecision(it, body, label, below || closingN ? 8000 : 4000)) return;
   $("#fb").value = "";
-  queueDecision(it, body, label, below || closingN ? 8000 : 4000);
-  pendingDec.fb = fb;
+  if (pendingDec) pendingDec.fb = fb;
   const next = prefs.advance ? items.find(i => i.status === "pending" && i.id !== it.id) : null;
   if (!prefs.advance) { renderQueue(); renderMain(); renderSide(); return; }
   if (next) select(next.id); else showIdle();
@@ -1365,7 +1365,9 @@ document.addEventListener("keydown", e => {
 
 /* ---------- data ---------- */
 async function load(force) {
-  const data = await (await fetch("/api/items")).json();
+  const response = await fetch("/api/items");
+  if (!response.ok) throw new Error("Board unavailable (" + response.status + ")");
+  const data = await response.json();
   const sig = JSON.stringify(data);
   if (!force && sig === lastSig) return;
   const oldSel = item(sel.id), oldLen = oldSel ? oldSel.versions.length : 0;
@@ -1419,6 +1421,7 @@ function haptic(kind) {
 
 /* ---------- phone: card deck (swipe right approve, left changes, up later) ---------- */
 let deckMode = prefs.start !== "list", skipped = [], pendingDec = null, dragging = false, deckTop = null;
+const sending = new Set(), failedSaves = new Map();
 const frameIdx = {};
 function fitCard(root) {
   root.querySelectorAll(".cfit").forEach(f => {
@@ -1428,7 +1431,7 @@ function fitCard(root) {
   });
 }
 const deckCards = () => {
-  const open = items.filter(i => i.status === "pending" && !(pendingDec && pendingDec.it.id === i.id));
+  const open = items.filter(i => i.status === "pending" && !sending.has(i.id) && !(pendingDec && pendingDec.it.id === i.id));
   return [...open.filter(i => !skipped.includes(i.id)), ...skipped.map(id => open.find(i => i.id === id)).filter(Boolean)];
 };
 const deckNotes = {};
@@ -1873,26 +1876,59 @@ function renderDeckNote(it) {
   else if (note) { if (chip) chip.textContent = "Note: " + note; else $("#deck .stack").insertAdjacentHTML("afterend", `<div class="notechip">Note: ${esc(note)}</div>`); }
 }
 function queueDecision(it, body, label, ms = 4000) {
+  if (sending.has(it.id) || pendingDec?.it.id === it.id || [...failedSaves.values()].some(p => p.it.id === it.id)) {
+    toast("Finish, undo, or dismiss this item's previous verdict first.");
+    deckTop = null; renderDeck(); return false;
+  }
+  body.request_id ||= Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join("");
   if (pendingDec) commitDecision();          // one undo at a time: send the previous one now
   ms = ms > 4000 ? Math.max(ms, prefs.undo * 2000) : prefs.undo * 1000;   // cautious cases keep at least double
   const timer = setTimeout(commitDecision, ms);
   pendingDec = { it, body, timer, label, ms };
   deckTop = null; renderDeck(); renderDeskUndo();
   haptic(body.verdict === "rejected" ? "reject" : body.verdict === "changes" ? "changes" : "approve");
+  return true;
+}
+function renderSaveErrors() {
+  let el = $("#save-errors");
+  if (!el) {
+    el = document.createElement("div"); el.id = "save-errors";
+    el.style.cssText = "position:fixed;top:60px;left:12px;right:12px;z-index:200;background:var(--surface-1);padding:12px;border:1px solid var(--bad);border-radius:8px";
+    document.body.append(el);
+  }
+  el.hidden = !failedSaves.size;
+  el.innerHTML = [...failedSaves.values()].map(p => `<div>${esc(p.it.title)}: ${esc(p.error)} <button data-retry="${esc(p.body.request_id)}">Retry save</button> <button data-dismiss="${esc(p.body.request_id)}">Dismiss</button></div>`).join("");
+  el.querySelectorAll("[data-retry]").forEach(b => b.onclick = () => sendDecision(failedSaves.get(b.dataset.retry)));
+  el.querySelectorAll("[data-dismiss]").forEach(b => b.onclick = () => { failedSaves.delete(b.dataset.dismiss); renderSaveErrors(); });
 }
 async function commitDecision() {
   const p = pendingDec; if (!p) return;
-  pendingDec = null; clearTimeout(p.timer); deckTop = null;
-  if (!sess.start) sess.start = Date.now();
-  const skey = p.body.verdict === "rejected" ? "rejected" : p.body.verdict === "changes" ? "changes" : "approved"; sess[skey]++;
+  pendingDec = null; clearTimeout(p.timer);
+  return sendDecision(p);
+}
+async function sendDecision(p) {
+  if (!p || sending.has(p.it.id)) return;
+  sending.add(p.it.id); failedSaves.delete(p.body.request_id);
+  deckTop = null; renderSaveErrors(); renderDeck(); renderDeskUndo();
   try {
     const res = await fetch("/api/decide", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p.body), keepalive: true });
     if (!res.ok) throw new Error((await res.json()).error || "save failed");
-    delete deckNotes[p.it.id]; delete deckPins[p.it.id]; delete drafts[p.it.id + "@" + p.body.version];
-    skipped = skipped.filter(x => x !== p.it.id);
-    renderDeskUndo();
-    await load(true);
-  } catch (e) { haptic("error"); toast("Not sent: " + e.message); sess[skey] = Math.max(0, sess[skey] - 1); deckTop = null; renderDeck(); }
+  } catch (e) {
+    sending.delete(p.it.id); p.error = "Save unconfirmed: " + e.message;
+    failedSaves.set(p.body.request_id, p); deckNotes[p.it.id] = p.body.feedback;
+    deckTop = null; renderSaveErrors(); renderDeck(); renderDeskUndo();
+    haptic("error"); toast("Save unconfirmed. Your verdict is available to retry.");
+    return;
+  }
+  if (!sess.start) sess.start = Date.now();
+  const skey = p.body.verdict === "rejected" ? "rejected" : p.body.verdict === "changes" ? "changes" : "approved"; sess[skey]++;
+  // Reflect the accepted verdict before refreshing; a failed GET cannot undo a saved POST.
+  const current = item(p.it.id);
+  if (current && current.versions.at(-1).version === p.body.version) current.status = p.body.verdict;
+  delete deckNotes[p.it.id]; delete deckPins[p.it.id]; delete drafts[p.it.id + "@" + p.body.version];
+  skipped = skipped.filter(x => x !== p.it.id);
+  sending.delete(p.it.id); deckTop = null; renderQueue(); renderDeck(); renderDeskUndo();
+  try { await load(true); } catch (e) { toast("Verdict saved. Board refresh will retry."); }
 }
 addEventListener("pagehide", () => commitDecision());
 document.addEventListener("visibilitychange", () => { if (document.hidden) commitDecision(); });

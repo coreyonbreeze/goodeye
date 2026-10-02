@@ -19,7 +19,7 @@ Agents can produce dozens of marketing assets an hour. The slow part is you: fin
 - **Spec checks.** Each file is checked against its placements (LinkedIn banner 1584×396, X header 1500×500, YouTube thumbnail 1280×720, story 9:16, email width and GIF size, favicon shape, hero file size). The agent sees the warnings when it submits; you see them on the card.
 - **Notes that point at a moment.** "Note at 0:03.20" on the timeline adds the time to your note. Hold **C** (or long-press on a phone) to flash the previous version. Your most-used notes come back as one-tap chips.
 - **Know where feedback went.** The board distinguishes subscribed, pending delivery, queued in Codex, and acknowledged by the agent. A terminal listener is labeled separately. Changes that never came back are flagged, and the agent gets one reminder on its next `goodeye wait`.
-- **One winner per placement.** Put competing candidates in a *slot*. Approving one closes the others, after you confirm.
+- **One winner per placement in each project.** Put competing candidates in a *slot*. Approving one closes the others, after you confirm.
 
 ![A choice: three icon options ranked, with a note on the second pick](docs/choice.jpg)
 
@@ -73,7 +73,7 @@ agent: wakes with "APPROVED WITH NOTES ... Do NOT resubmit", applies the note, m
 | `goodeye demo` | Load four sample items |
 | `goodeye phone [--off] [--new-token]` | Open the board to your phone (QR code, token-protected) |
 | `goodeye notify --ntfy URL` / `--off` / `--test` | Push a phone notification when new work arrives (opt-in) |
-| `goodeye export DIR [--project P]` | Copy approved final files (pick 1 for choices) plus a `manifest.json` |
+| `goodeye export DIR [--project P]` | Copy items whose latest version is approved (pick 1 for choices) plus a `manifest.json` |
 
 Environment: `GOODEYE_HOME` (store, default `~/.goodeye`), `GOODEYE_PORT` (default `4400`), `GOODEYE_AGENT` (default watcher name for `--as`).
 
@@ -196,6 +196,10 @@ On a phone the board is a card deck:
 - **Compare with the previous version:** Off, a before/after **Slider** (drag anywhere), or Side by side.
 - **Magnifier** over still images for small line art (turn it off in ⚙ Settings). Click still opens the zoom viewer.
 - **Shift-click** the asset to drop a numbered pin; the note starts "At pin 1 (top left, 12% across, 20% down):".
+
+If a save fails, **Retry save** sends the same verdict without creating a duplicate. Resolve or dismiss that save before submitting another verdict for the item. A failed board refresh after a successful save does not undo the verdict.
+
+Submissions publish only after the complete version is copied. Concurrent submissions receive separate version numbers. The verdict log keeps its JSONL format. Each write publishes the complete batch together, so slot approvals and their closures cannot be partially saved.
 
 ## Keyboard
 

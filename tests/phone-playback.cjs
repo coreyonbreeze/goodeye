@@ -68,6 +68,77 @@ function run(command,args,env=process.env){
   console.log('PASS',scenario);
   await context.close();
  }
+
+ // A lost POST response must be safe to retry without duplicating a verdict.
+ const context=await browser.newContext({...devices['iPhone 13']});
+ await context.addInitScript(()=>localStorage.setItem('goodeye.coach','1'));
+ const page=await context.newPage();
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto(url);
+ await page.waitForSelector('#deck .card2:not(.behind) video.dvid');
+ let loseResponse=true;
+ await page.route('**/api/decide',async route=>{
+  if(loseResponse){await route.fetch();loseResponse=false;await route.abort();}
+  else await route.continue();
+ });
+ await page.evaluate(async()=>{
+  const it=item('test-video');
+  queueDecision(it,{id:it.id,version:'v1',verdict:'changes',feedback:'Keep this feedback'},'Changes requested');
+  const accepted=queueDecision(it,{id:it.id,version:'v1',verdict:'rejected',feedback:''},'Rejected');
+  if(accepted!==false) throw new Error('Allowed a duplicate pending verdict');
+  await commitDecision();
+ });
+ await page.waitForSelector('#save-errors [data-retry]');
+ assert.equal(await page.evaluate(()=>sess.changes),0);
+ assert.equal(await page.evaluate(()=>queueDecision(item('test-video'),{id:'test-video',version:'v1',verdict:'rejected',feedback:''},'Rejected')),false);
+ assert.equal(await page.evaluate(()=>failedSaves.size),1);
+ await page.locator('#save-errors [data-retry]').click();
+ await page.waitForFunction(()=>sess.changes===1&&!failedSaves.size);
+ let state=await (await fetch(url+'/api/items')).json();
+ assert.equal(state.items[0].versions[0].decisions.length,1);
+ assert.equal(state.items[0].versions[0].decisions[0].feedback,'Keep this feedback');
+ console.log('PASS lost verdict response and idempotent retry');
+ // A refresh failure after a saved verdict must not present a second-save retry.
+ await page.route('**/api/items',route=>route.fulfill({status:503,body:'{}'}));
+ await page.evaluate(async()=>{
+  const it=item('test-video');
+  queueDecision(it,{id:it.id,version:'v1',verdict:'approved',feedback:''},'Approved');
+  await commitDecision();
+ });
+ assert.equal(await page.evaluate(()=>sess.approved),1);
+ assert.equal(await page.evaluate(()=>failedSaves.size),0);
+ assert.equal(await page.evaluate(()=>item('test-video').status),'approved');
+ assert.deepEqual(errors,[]);
+ console.log('PASS saved verdict survives failed refresh');
+ await context.close();
+
+ // Desktop stays on the item when advance is disabled. Repeated actions retain the note.
+ run('python3',[path.join(repo,'goodeye.py'),'submit',clip,'--id','desktop-video','--project','Test','--reasoning',reasoning],env);
+ const desktop=await browser.newContext({viewport:{width:1280,height:900}});
+ const desktopPage=await desktop.newPage();
+ await desktopPage.goto(url+'/#desktop-video');
+ await desktopPage.waitForSelector('#fb');
+ await desktopPage.evaluate(()=>{prefs.advance=false;});
+ await desktopPage.locator('#fb').fill('First feedback');
+ await desktopPage.locator('#main [data-d="changes"]').click();
+ await desktopPage.locator('#fb').fill('Keep this second draft');
+ await desktopPage.locator('#main [data-d="rejected"]').click();
+ assert.equal(await desktopPage.locator('#fb').inputValue(),'Keep this second draft');
+ assert.equal(await desktopPage.evaluate(()=>pendingDec.body.verdict),'changes');
+ let releasePost;
+ await desktopPage.route('**/api/decide',route=>new Promise(resolve=>{
+  releasePost=async()=>{await route.continue();resolve();};
+ }));
+ await desktopPage.evaluate(()=>{commitDecision();});
+ for(let attempt=0;attempt<100&&!releasePost;attempt++) await new Promise(resolve=>setTimeout(resolve,20));
+ assert.ok(releasePost,'Save request did not start');
+ await desktopPage.locator('#main [data-d="rejected"]').click();
+ assert.equal(await desktopPage.locator('#fb').inputValue(),'Keep this second draft');
+ assert.equal(await desktopPage.evaluate(()=>pendingDec),null);
+ await releasePost();
+ await desktopPage.waitForFunction(()=>!sending.size);
+ console.log('PASS desktop duplicate actions preserve feedback');
+ await desktop.close();
  } finally {
   if(browser) await browser.close();
   if(server){server.kill();await new Promise(resolve=>server.once('exit',resolve));}

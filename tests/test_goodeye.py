@@ -354,8 +354,11 @@ class GoodEyeTest(unittest.TestCase):
         self.cli("submit", self.png, "--id", "p", "--reasoning", self.reason, "--project", "Demo")
         w = subprocess.Popen(CLI + ["wait", "--project", "Demo"], env=self.env, stdout=subprocess.DEVNULL)
         try:
-            time.sleep(1)
-            status, body = self.get("/api/items")
+            for _ in range(50):
+                status, body = self.get("/api/items")
+                if json.loads(body)["agents"]:
+                    break
+                time.sleep(.1)
             self.assertEqual(json.loads(body)["agents"][0]["project"], "Demo")
         finally:
             w.terminate(); w.wait(5)
@@ -376,6 +379,94 @@ class GoodEyeTest(unittest.TestCase):
         out = self.cli("status").stdout
         for item in ("demo-banner@v2", "demo-icon@v1", "demo-hero-a@v1", "demo-hero-b@v1"):
             self.assertIn(item, out)
+
+    def test_concurrent_submissions_allocate_distinct_versions(self):
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(lambda _: self.cli("submit", self.png, "--id", "shared", "--reasoning", self.reason2), range(4)))
+        versions = json.loads(self.get("/api/items")[1])["items"][0]["versions"]
+        self.assertEqual([v["seq"] for v in versions], [1, 2, 3, 4])
+        self.assertEqual([v["version"] for v in versions], ["v1", "v2", "v3", "v4"])
+
+    def test_failed_submission_does_not_reserve_version(self):
+        bad = self.file("bad.txt", b"unsupported")
+        result = self.cli("submit", bad, "--id", "retry", "--reasoning", self.reason, ok=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.cli("submit", self.png, "--id", "retry", "--reasoning", self.reason)
+        self.assertIn("retry@v1", self.cli("status").stdout)
+        for version in ("..", ".", "../outside", "a/b"):
+            result = self.cli("submit", self.png, "--id", "unsafe", "--version", version, "--reasoning", self.reason, ok=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn("Traceback", result.stderr)
+
+    def test_truncated_images_do_not_break_the_board(self):
+        for index, data in enumerate((b"\x89PNG\r\n\x1a\n", b"GIF89a", b"RIFF0000WEBPVP8 ", b"RIFF0000WEBPVP8L", b"\x89PNG\r\n\x1a\n" + bytes(20))):
+            image = self.file(f"short{index}.png", data)
+            self.cli("submit", image, "--id", f"short{index}", "--reasoning", self.reason, "--context", "linkedin-banner")
+        status, body = self.get("/api/items")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(json.loads(body)["items"]), 5)
+
+    def test_invalid_shapes_and_nonfinite_scores_fail_cleanly(self):
+        for score in (float("nan"), float("inf"), True):
+            result = self.cli("submit", self.png, "--id", "bad-score", "--reasoning", self.reason,
+                              "--scores", self.json("scores.json", {"scores": {"quality": {"value": score}}}), ok=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn("Traceback", result.stderr)
+        self.cli("submit", self.png, "--id", "valid", "--reasoning", self.reason)
+        for field in ("ranking", "option_notes"):
+            for value in ({"key": "one"}, "one", 4, [None]):
+                self.assertEqual(self.post({"id": "valid", "version": "v1", "verdict": "approved", field: value})[0], 400)
+        self.assertEqual(self.post({}, {"Content-Length": "-1"})[0], 400)
+        self.assertEqual(self.post({"stale_hours": float("nan")}, path="/api/settings")[0], 400)
+        self.assertEqual(self.post({"id": "valid", "version": "v1", "verdict": "changes",
+                                    "option_notes": [{"key": "absent", "note": "x"}]})[0], 400)
+
+    def test_verdict_retry_is_idempotent_and_stale_versions_are_refused(self):
+        self.cli("submit", self.png, "--id", "asset", "--reasoning", self.reason)
+        body = {"id": "asset", "version": "v1", "verdict": "approved", "request_id": "test-request-00000001"}
+        status, first = self.post(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(self.post(body), (200, first))
+        self.assertEqual(self.post({**body, "verdict": "rejected"})[0], 409)
+        self.cli("submit", self.png, "--id", "asset", "--reasoning", self.reason2)
+        self.assertEqual(self.post(body), (200, first))
+        self.assertEqual(self.post({"id": "asset", "version": "v1", "verdict": "approved"})[0], 409)
+        state = json.loads(self.get("/api/items")[1])["items"][0]
+        self.assertEqual(len(state["versions"][0]["decisions"]), 1)
+        self.assertEqual(state["status"], "pending")
+
+    def test_interrupted_log_recovers_and_slot_projects_are_isolated(self):
+        for ident, project in (("one", "A"), ("two", "A"), ("three", "B")):
+            self.cli("submit", self.png, "--id", ident, "--project", project, "--slot", "hero", "--reasoning", self.reason)
+        log = os.path.join(self.env["GOODEYE_HOME"], "decisions.jsonl")
+        with open(log, "ab") as f:
+            f.write(b'[{"decision_id": "interrupted"')
+        self.assertEqual(self.get("/api/items")[0], 200)
+        status, decision = self.post({"id": "one", "version": "v1", "verdict": "approved"})
+        self.assertEqual(status, 200)
+        self.assertEqual(decision["closed"], ["two@v1"])
+        states = {i["id"]: i["status"] for i in json.loads(self.get("/api/items")[1])["items"]}
+        self.assertEqual(states, {"one": "approved", "two": "not_chosen", "three": "pending"})
+        with open(log) as f:
+            self.assertEqual(len([json.loads(line) for line in f]), 2)
+
+    def test_export_excludes_superseded_approval(self):
+        self.cli("submit", self.png, "--id", "asset", "--reasoning", self.reason)
+        self.post({"id": "asset", "version": "v1", "verdict": "approved"})
+        self.cli("submit", self.png, "--id", "asset", "--reasoning", self.reason2)
+        self.post({"id": "asset", "version": "v2", "verdict": "rejected"})
+        out = os.path.join(self.tmp.name, "export")
+        self.cli("export", out)
+        with open(os.path.join(out, "manifest.json")) as f:
+            self.assertEqual(json.load(f), [])
+
+    def test_existing_port_must_serve_the_same_store(self):
+        other_env = {**self.env, "GOODEYE_HOME": os.path.join(self.tmp.name, "other-store")}
+        result = subprocess.run(CLI + ["open"], env=other_env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("another app or store", result.stderr)
+        self.assertEqual(self.get("/api/health")[0], 200)
 
 
 if __name__ == "__main__":

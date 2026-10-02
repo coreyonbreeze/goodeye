@@ -181,6 +181,30 @@ class DeliveryTest(unittest.TestCase):
         self.ready()
         self.assertTrue(self.store.dispatch_one(self.runner))
 
+    def test_handoff_during_send_cannot_consume_new_sessions_delivery(self):
+        self.subscribe()
+        ident = self.ready()
+        name = 'codex-' + self.thread[:8]
+        new_thread = str(uuid.uuid4())
+        def handoff(*args, **kwargs):
+            self.store.handoff('Mosaic', name, name, 'codex', new_thread, sys.executable)
+            return self.runner(*args, **kwargs)
+        self.store.dispatch_one(handoff)
+        self.assertEqual(self.store.inbox(ident)['status'], 'pending')
+        self.store.dispatch_one(self.runner)
+        self.assertEqual(self.store.inbox(ident)['thread'], new_thread)
+        self.assertEqual(self.store.inbox(ident)['status'], 'queued')
+
+    def test_retry_during_failed_send_is_not_delayed_by_old_worker(self):
+        self.subscribe()
+        ident = self.ready()
+        def retry(*args, **kwargs):
+            self.store.retry(ident)
+            raise subprocess.TimeoutExpired('codex', 20)
+        self.store.dispatch_one(retry)
+        self.assertEqual(self.store.inbox(ident)['next_attempt'], 0)
+        self.assertTrue(self.store.dispatch_one(self.runner))
+
 
 class WatcherTest(unittest.TestCase):
     """Several sessions watch one project; claims route verdicts; handoff moves a session's work."""
@@ -311,3 +335,42 @@ class WatcherTest(unittest.TestCase):
         # A pull role can move to a Codex push thread, which re-validates the target.
         self.store.handoff('Mosaic', 'asset-agent', 'asset-agent', 'codex', str(uuid.uuid4()), sys.executable)
         self.assertEqual(self.store.watcher('Mosaic', 'asset-agent')['runtime'], 'codex')
+
+    def test_handoff_to_existing_watcher_preserves_skipped_events(self):
+        self.store.watch('Mosaic', 'old')
+        self.store.watch('Mosaic', 'new')
+        self.store.claim('Mosaic', 'film-*', 'old')
+        self.decide('film-01')
+        old_id = next(w for w in self.store.status() if w['name'] == 'old')['last']['id']
+        self.store.handoff('Mosaic', 'new', 'old')
+        self.assertEqual([d['id'] for d in self.store.inbox(old_id)['decisions']], ['film-01'])
+        self.assertEqual(self.got('new'), ['film-01'])
+
+    def test_repeated_handoff_keeps_each_delivery_event_once(self):
+        old = self.store.watch('Mosaic', 'old')
+        self.decide('film-01')
+        ident = self.store.pull(old['id'])[0]['id']
+        self.store.handoff('Mosaic', 'middle', 'old')
+        self.store.handoff('Mosaic', 'new', 'middle')
+        self.assertEqual([d['id'] for d in self.store.inbox(ident)['decisions']], ['film-01'])
+        self.assertEqual(self.got('new'), ['film-01'])
+
+    def test_pull_session_change_needs_handoff(self):
+        first = self.store.watch('Mosaic', 'video', 'pull', 'one')
+        with self.assertRaises(ValueError):
+            self.store.watch('Mosaic', 'video', 'pull', 'two')
+        self.assertEqual(self.store.watch('Mosaic', 'video')['thread'], 'one')
+        self.assertEqual(self.store.watcher('Mosaic', 'video')['id'], first['id'])
+
+    def test_inactive_watcher_cannot_pull_saved_deliveries(self):
+        sub = self.store.watch('Mosaic', 'old')
+        self.decide('film-01')
+        self.store.unwatch('Mosaic', 'old')
+        self.assertEqual(self.store.pull(sub['id']), [])
+
+    def test_concurrent_first_open_migrates_once(self):
+        home = os.path.join(self.tmp.name, 'fresh')
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            stores = list(pool.map(lambda _: DeliveryStore(home), range(4)))
+        self.assertEqual(len(stores), 4)
+        self.assertEqual(stores[0].status(), [])

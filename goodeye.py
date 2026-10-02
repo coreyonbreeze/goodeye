@@ -15,10 +15,11 @@
 
 Store: $GOODEYE_HOME (default ~/.goodeye). Port: $GOODEYE_PORT (default 4400). Python 3.9+, standard library only.
 """
+import contextlib, math, tempfile
 import argparse, atexit, shlex, signal, sqlite3, urllib.request, datetime, threading, http.server, http.cookies, webbrowser, zlib, struct, secrets, hmac, gzip, hashlib, io, json, mimetypes, os, re, shutil, socket, subprocess, sys, time, urllib.parse, uuid
 
 __version__ = "0.8.0"
-HOME = os.path.expanduser(os.environ.get("GOODEYE_HOME", "~/.goodeye"))
+HOME = os.path.abspath(os.path.expanduser(os.environ.get("GOODEYE_HOME", "~/.goodeye")))
 ASSETS = os.path.join(HOME, "assets")
 DECISIONS = os.path.join(HOME, "decisions.jsonl")
 DELIVERED = os.path.join(HOME, "delivered.json")
@@ -61,11 +62,52 @@ def read_json(path, default=None):
         return default
 
 
+@contextlib.contextmanager
+def atomic_file(path, mode="w"):
+    """Readers see either complete version; every writer owns its temporary file."""
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(path)), prefix=".write-")
+    try:
+        with os.fdopen(fd, mode) as f:
+            yield f
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
 def write_json(path, data):
-    tmp = path + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(data, f, indent=1)
-    os.replace(tmp, path)
+    with atomic_file(path) as f:
+        json.dump(data, f, indent=1, allow_nan=False)
+
+
+@contextlib.contextmanager
+def store_lock():
+    """Serialize filesystem mutations across CLI processes and server threads."""
+    with LOCK:
+        db = sqlite3.connect(os.path.join(HOME, "store-lock.sqlite3"), timeout=60)
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            yield
+        finally:
+            db.rollback()
+            db.close()
+
+
+@contextlib.contextmanager
+def new_version_dir(path):
+    if os.path.exists(path):
+        die("version directory already exists; choose a different --version")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    # Stage outside assets so a crash cannot expose or reserve an incomplete version.
+    staging = tempfile.mkdtemp(prefix=".submission-", dir=HOME)
+    try:
+        yield staging
+        os.rename(staging, path)
+    finally:
+        if os.path.exists(staging):
+            shutil.rmtree(staging)
 
 
 def kind_of(path):
@@ -94,11 +136,31 @@ def decisions():
     try:
         with open(DECISIONS) as f:
             for line in f:
-                if line.strip():
-                    out.append(json.loads(line))
+                # An interrupted append may leave an incomplete last record.
+                if line.endswith("\n") and line.strip():
+                    record = json.loads(line)
+                    out.extend(record if isinstance(record, list) else [record])
     except OSError:
         pass
     return out
+
+
+def append_decisions(rows):
+    """Publish a whole verdict batch atomically, preserving the existing JSONL format.
+
+    Caller holds store_lock. A partial final record from an older writer is discarded.
+    """
+    try:
+        with open(DECISIONS, "rb") as f:
+            data = f.read()
+    except FileNotFoundError:
+        data = b""
+    if data and not data.endswith(b"\n"):
+        data = data[:data.rfind(b"\n") + 1]
+    with atomic_file(DECISIONS, "wb") as f:
+        f.write(data)
+        for row in rows:
+            f.write((json.dumps(row, allow_nan=False) + "\n").encode())
 
 
 def all_items():
@@ -127,7 +189,7 @@ def all_items():
 
 # ---------- placement spec checks ----------
 
-def image_size(path):
+def _image_size(path):
     """(width, height) from the file header for PNG, GIF, JPEG, WebP and simple SVG. None if unknown."""
     try:
         with open(path, "rb") as f:
@@ -167,6 +229,14 @@ def image_size(path):
     return None
 
 
+def image_size(path):
+    try:
+        dims = _image_size(path)
+        return dims if dims and all(math.isfinite(n) and n > 0 for n in dims) else None
+    except (ValueError, IndexError, struct.error):
+        return None
+
+
 # Publisher guidance as of 2026. Warnings only: the reviewer decides.
 SPECS = {
     "linkedin-banner": {"size": (1584, 396), "max_mb": 8},
@@ -198,7 +268,7 @@ def spec_checks(path, kind, contexts, media=None):
             continue
         say = lambda msg: out.append({"context": c, "msg": msg})
         is_svg = path.lower().endswith(".svg")
-        if dims and not is_svg:
+        if dims and all(n > 0 for n in dims) and not is_svg:
             w, h = dims
             if "size" in r:
                 tw, th = r["size"]
@@ -243,13 +313,13 @@ def add_dims(v):
             o["media"] = {**(o.get("media") or {}), **dims("options/" + o["file"])}
 
 
-def checks_for(meta):
+def checks_for(meta, base=None):
     """Checks stored at submit, or computed once for items submitted before checks existed."""
     if "checks" in meta:
         return meta["checks"]
     key = meta["dir"]
-    if key not in _CHECK_CACHE:
-        base = os.path.join(ASSETS, meta["dir"])
+    if base is not None or key not in _CHECK_CACHE:
+        base = base or os.path.join(ASSETS, meta["dir"])
         if meta.get("kind") == "choice":
             _CHECK_CACHE[key] = [{"context": c["context"], "msg": f'{o["label"]}: {c["msg"]}'} for o in meta.get("options", [])
                                  for c in spec_checks(os.path.join(base, "options", o["file"]), o["kind"], meta.get("contexts"), o.get("media"))]
@@ -340,7 +410,9 @@ def normalize_scores(raw):
     else:
         die("scores JSON is not in a known shape (see README: Scores)")
     for k, v in scores.items():
-        if not isinstance(v, dict) or not isinstance(v.get("value"), (int, float)):
+        if not isinstance(v, dict) or any(
+                isinstance(v.get(n), bool) or not isinstance(v.get(n), (int, float)) or not math.isfinite(v[n])
+                for n in ("value", "max", "bar") if n == "value" or n in v):
             die(f"score {k!r} needs a numeric 'value'")
     if judge is not None and not isinstance(judge, dict):
         die("'judge' must be an object: {name, pass, notes}")
@@ -376,12 +448,17 @@ def probe_media(path, kind):
 
 
 def validate_reasoning(r, is_revision):
-    if not isinstance(r, dict) or not str(r.get("summary", "")).strip():
+    if not isinstance(r, dict) or not isinstance(r.get("summary"), str) or not r["summary"].strip():
         die("reasoning needs a non-empty 'summary'")
     decs = r.get("decisions") or []
-    if not decs or not all(isinstance(d, dict) and d.get("choice") and d.get("why") for d in decs):
+    if not isinstance(decs, list) or not decs or not all(isinstance(d, dict) and d.get("choice") and d.get("why") for d in decs):
         die("reasoning needs 'decisions': [{\"choice\": ..., \"why\": ...}] with at least one entry")
-    if is_revision and not (r.get("changes") or []):
+    changes = r.get("changes", [])
+    if not isinstance(changes, list) or not all(isinstance(c, dict) and c.get("change") and c.get("why") for c in changes):
+        die("reasoning changes must be a list of {change, why, feedback?}")
+    if not isinstance(r.get("open_questions", []), list):
+        die("reasoning open_questions must be a list")
+    if is_revision and not changes:
         die("this is a new version: reasoning needs 'changes': [{\"change\": ..., \"why\": ..., \"feedback\": optional quote}]")
 
 
@@ -390,11 +467,13 @@ def validate_reasoning(r, is_revision):
 def load_options(path):
     """options.json -> list of option dicts with absolute file paths. See SKILL.md for the format."""
     spec = read_json(path)
-    if not isinstance(spec, dict) or not isinstance(spec.get("options"), list) or len(spec["options"]) < 2:
-        die("options JSON needs 'options': [at least 2 of {key, label, file, note?, scores?}]")
+    if not isinstance(spec, dict) or not isinstance(spec.get("options"), list) or not 2 <= len(spec["options"]) <= 9:
+        die("options JSON needs 'options': [2 to 9 of {key, label, file, note?, scores?}]")
     base = os.path.dirname(os.path.abspath(path))
     keys, out = set(), []
     for o in spec["options"]:
+        if not isinstance(o, dict):
+            die("each option must be an object")
         key = str(o.get("key", "")).strip()
         if not ID_RE.match(key) or key in keys:
             die(f"option key {key!r} must be unique, lowercase letters, digits, dot, dash, underscore")
@@ -403,7 +482,7 @@ def load_options(path):
         if not os.path.isfile(f):
             die(f"option {key}: no such file {f}")
         sc = o.get("scores") or {}
-        sc = {k: (v if isinstance(v, dict) else {"value": v}) for k, v in sc.items()}
+        sc, _ = normalize_scores(sc)
         out.append({"key": key, "label": o.get("label") or key, "src": f, "note": o.get("note", ""), "scores": sc})
     rec = spec.get("recommended")
     if rec is not None and rec not in keys:
@@ -435,7 +514,7 @@ def cmd_slot(a):
         print(f"{asset_id} -> slot {slot['key']} ({slot['label']})")
 
 
-def cmd_submit(a):
+def save_submission(a):
     if bool(a.file) == bool(a.options):
         die("give either FILE or --options options.json, not both")
     if a.options:
@@ -457,6 +536,8 @@ def cmd_submit(a):
         die(f"cannot read scores JSON {a.scores}")
     seq = (prior[-1]["seq"] + 1) if prior else 1
     version = a.version or f"v{seq}"
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,80}", version):
+        die("version must start with a letter or digit and contain only letters, digits, dot, dash, underscore (max 81)")
     if any(p["version"] == version for p in prior):
         die(f"{a.id}@{version} already exists; versions are frozen, pick a new one")
     contexts = [c.strip() for c in (a.context or "").split(",") if c.strip()]
@@ -464,31 +545,38 @@ def cmd_submit(a):
         if c not in CONTEXTS:
             die(f"unknown context {c}; use one of {', '.join(CONTEXTS)}")
     vdir = os.path.join(ASSETS, a.id, re.sub(r"[^A-Za-z0-9._-]", "_", version))
-    os.makedirs(vdir)
-    if a.options:
-        os.makedirs(os.path.join(vdir, "options"))
-        for o in options:
-            o["file"] = f'{o["key"]}{os.path.splitext(o["src"])[1].lower()}'
-            o["kind"] = kind_of(o["src"])
-            o["media"] = probe_media(o["src"], o["kind"])
-            shutil.copy2(o["src"], os.path.join(vdir, "options", o["file"]))
-        first = next((o for o in options if o["key"] == recommended), options[0])
-        fname, kind = f'options/{first["file"]}', "choice"
-    else:
-        fname, kind = os.path.basename(src), kind_of(src)
-        shutil.copy2(src, os.path.join(vdir, fname))
-    meta = {"id": a.id, "version": version, "seq": seq, "project": a.project or (prior[-1].get("project") if prior else ""),
-            "title": a.title or (prior[-1]["title"] if prior else a.id), "kind": kind, "file": fname,
-            "source_path": src, "size_bytes": os.path.getsize(os.path.join(vdir, fname)), "contexts": contexts or (prior[-1]["contexts"] if prior else []),
-            "submitted_at": now(), "media": {} if kind == "choice" else probe_media(src, kind), "reasoning": reasoning, "scores": scores, "judge": judge,
-            "dir": os.path.relpath(vdir, ASSETS)}
-    if kind == "choice":
-        meta.update(options=options, recommended=recommended, question=question)
-    slot = parse_slot(a.slot, a.slot_label) if a.slot else (prior[-1].get("slot") if prior else None)
-    if slot:
-        meta["slot"] = slot
-    meta["checks"] = checks_for(meta)
-    write_json(os.path.join(vdir, "meta.json"), meta)
+    with new_version_dir(vdir) as staging:
+        if a.options:
+            os.makedirs(os.path.join(staging, "options"))
+            for o in options:
+                o["file"] = f'{o["key"]}{os.path.splitext(o["src"])[1].lower()}'
+                o["kind"] = kind_of(o["src"])
+                o["media"] = probe_media(o["src"], o["kind"])
+                shutil.copy2(o["src"], os.path.join(staging, "options", o["file"]))
+            first = next((o for o in options if o["key"] == recommended), options[0])
+            fname, kind = f'options/{first["file"]}', "choice"
+        else:
+            fname, kind = os.path.basename(src), kind_of(src)
+            shutil.copy2(src, os.path.join(staging, fname))
+        meta = {"id": a.id, "version": version, "seq": seq, "project": a.project or (prior[-1].get("project") if prior else ""),
+                "title": a.title or (prior[-1]["title"] if prior else a.id), "kind": kind, "file": fname,
+                "source_path": src, "size_bytes": os.path.getsize(os.path.join(staging, fname)), "contexts": contexts or (prior[-1]["contexts"] if prior else []),
+                "submitted_at": now(), "media": {} if kind == "choice" else probe_media(src, kind), "reasoning": reasoning, "scores": scores, "judge": judge,
+                "dir": os.path.relpath(vdir, ASSETS)}
+        if kind == "choice":
+            meta.update(options=options, recommended=recommended, question=question)
+        slot = parse_slot(a.slot, a.slot_label) if a.slot else (prior[-1].get("slot") if prior else None)
+        if slot:
+            meta["slot"] = slot
+        meta["checks"] = checks_for(meta, staging)
+        write_json(os.path.join(staging, "meta.json"), meta)
+    return meta
+
+
+def cmd_submit(a):
+    with store_lock():
+        meta = save_submission(a)
+    version = meta["version"]
     ensure_server()
     print(f"submitted {a.id}@{version} ({meta['kind']}) -> {URL}/#{a.id}")
     for c in meta["checks"]:
@@ -844,16 +932,28 @@ def port_open():
         s.close()
 
 
+def server_ready():
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{PORT}/api/health", timeout=1) as response:
+            state = json.load(response)
+        return state.get("service") == "goodeye" and state.get("store") == os.path.realpath(HOME)
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def ensure_server():
     if port_open():
-        return
-    log = open(os.path.join(HOME, "server.log"), "a")
-    subprocess.Popen([sys.executable, os.path.realpath(__file__), "serve"], stdout=log, stderr=log,
-                     stdin=subprocess.DEVNULL, start_new_session=True)
-    for _ in range(20):
-        if port_open():
+        if server_ready():
+            return
+        die(f"port {PORT} is serving another app or store; choose a different GOODEYE_PORT")
+    with open(os.path.join(HOME, "server.log"), "a") as log:
+        subprocess.Popen([sys.executable, os.path.realpath(__file__), "serve"], stdout=log, stderr=log,
+                         stdin=subprocess.DEVNULL, start_new_session=True)
+    for _ in range(30):
+        if server_ready():
             return
         time.sleep(0.1)
+    die(f"board did not start on port {PORT}; see {os.path.join(HOME, 'server.log')}")
 
 
 # ---------- phone access ----------
@@ -1015,7 +1115,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def save_settings(self, body):
         """Board-wide settings. Phone mode is not switchable here: turning it off from a phone would lock the phone out."""
-        with LOCK:
+        with store_lock():
             cfg = load_config()
             n = dict(cfg.get("notify") or {})
             if "ntfy" in body:
@@ -1031,7 +1131,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             cfg["notify"] = n
             if "stale_hours" in body:
                 try:
-                    cfg["stale_hours"] = max(1.0, min(24 * 14.0, float(body["stale_hours"])))
+                    value = float(body["stale_hours"])
+                    if not math.isfinite(value):
+                        raise ValueError("nonfinite hours")
+                    cfg["stale_hours"] = max(1.0, min(24 * 14.0, value))
                 except (TypeError, ValueError):
                     return self.send(400, {"error": "stale_hours must be a number"})
             write_json(CONFIG, cfg)
@@ -1097,6 +1200,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not self.allowed_host():
             return self.send(403, b"GoodEye: open the link from `goodeye phone` on this device first.", "text/plain; charset=utf-8")
         path = urllib.parse.urlparse(self.path).path
+        if path == "/api/health" and self.client_is_local():
+            return self.send(200, {"service": "goodeye", "store": os.path.realpath(HOME)})
         if path == "/manifest.webmanifest":
             return self.send(200, json.dumps(MANIFEST).encode(), "application/manifest+json")
         if path in ("/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"):
@@ -1118,7 +1223,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.send(200, f.read(), "text/html; charset=utf-8", csp=BOARD_CSP)
         if path == "/api/items":
             extra = {"mkey": media_key()} if LAN and not self.host_is_local() and self.has_token() else {}
-            return self.send(200, {"items": all_items(), "agents": agents_alive(), "subscriptions": delivery_store().status(), "claims": delivery_store().claims(), "holds": delivery_store().holds(), "stale_hours": stale_hours(), **extra})
+            store = delivery_store()
+            return self.send(200, {"items": all_items(), "agents": agents_alive(), "subscriptions": store.status(), "claims": store.claims(), "holds": store.holds(), "stale_hours": stale_hours(), **extra})
         if path.startswith("/files/"):
             rel = urllib.parse.unquote(path[len("/files/"):])
             full = os.path.realpath(os.path.join(ASSETS, rel))
@@ -1187,6 +1293,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", 0))
         except ValueError:
             return self.send(400, {"error": "bad length"})
+        if length < 0:
+            return self.send(400, {"error": "bad length"})
         if length > MAX_BODY:
             return self.send(413, {"error": "too large"})
         try:
@@ -1204,13 +1312,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.send(200, {"ok": True})
         if route == "/api/settings":
             return self.save_settings(body)
+        with store_lock():
+            return self.save_decision(body)
+
+    def save_decision(self, body):
+        request_id = body.get("request_id")
+        if request_id is not None and (not isinstance(request_id, str) or not re.fullmatch(r"[A-Za-z0-9-]{16,80}", request_id)):
+            return self.send(400, {"error": "invalid request_id"})
+        request_hash = hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
+        if request_id:
+            previous = next((d for d in decisions() if d.get("request_id") == request_id), None)
+            if previous:
+                if previous.get("request_hash") != request_hash:
+                    return self.send(409, {"error": "request_id already used for a different verdict"})
+                return self.send(200, previous)
         verdict = body.get("verdict")
         if verdict not in VERDICTS:
             return self.send(400, {"error": "verdict must be one of " + ", ".join(VERDICTS)})
         if not ID_RE.match(str(body.get("id", ""))):
             return self.send(400, {"error": "bad id"})
         feedback = str(body.get("feedback", ""))[:20000]
-        rows_in = [r for r in (body.get("ranking") or []) + (body.get("option_notes") or []) if isinstance(r, dict)]
+        for field in ("ranking", "option_notes"):
+            if field in body and (not isinstance(body[field], list) or any(not isinstance(r, dict) for r in body[field])):
+                return self.send(400, {"error": field + " must be a list of objects"})
+        rows_in = (body.get("ranking") or []) + (body.get("option_notes") or [])
         notes = any(str(r.get("note", "")).strip() for r in rows_in)
         if verdict == "changes" and not feedback.strip() and not notes:
             return self.send(400, {"error": "say what to change"})
@@ -1225,35 +1350,38 @@ class Handler(http.server.BaseHTTPRequestHandler):
              "project": meta.get("project", ""), "verdict": verdict, "feedback": feedback, "at": now()}
         if meta.get("kind") == "choice":
             keys = {o["key"] for o in meta.get("options", [])}
-            clean = lambda rows: [{"key": str(r.get("key")), "note": str(r.get("note", ""))[:5000]} for r in rows or [] if isinstance(r, dict) and r.get("key") in keys]
+            clean = lambda rows: [{"key": str(r.get("key")), "note": str(r.get("note", ""))[:5000]} for r in rows or [] if isinstance(r.get("key"), str) and r["key"] in keys]
             d["ranking"], d["option_notes"] = clean(body.get("ranking")), [r for r in clean(body.get("option_notes")) if r["note"].strip()]
             if verdict == "picked" and not d["ranking"]:
                 return self.send(400, {"error": "pick at least one option"})
         elif verdict == "picked":
             return self.send(400, {"error": "picked is only for choice items"})
-        with LOCK:
-            rows = [d]
-            slot = meta.get("slot")
-            if slot and verdict == "not_chosen":
-                filler = next((i for i in all_items() if i.get("slot") and i["slot"]["key"] == slot["key"] and i["status"] in FILLED), None)
-                d["feedback"] = feedback or (f"Slot '{slot['label']}' was filled by {filler['id']}@{filler['versions'][-1]['version']}." if filler else f"Closed in slot '{slot['label']}'.")
-            if slot and verdict in FILLED:
-                d["slot_label"], d["closed"] = slot["label"], []
-                for sib in all_items():
-                    if sib["id"] == meta["id"] or not sib.get("slot") or sib["slot"]["key"] != slot["key"]:
-                        continue
-                    if sib["status"] in OPEN + FILLED:
-                        sv = sib["versions"][-1]
-                        why = "replaced by" if sib["status"] in FILLED else "filled by"
-                        rows.append({"decision_id": uuid.uuid4().hex, "id": sib["id"], "version": sv["version"], "dir": sv["dir"],
-                                     "project": sv.get("project", ""), "verdict": "not_chosen", "at": d["at"], "by": d["decision_id"],
-                                     "feedback": f"Slot '{slot['label']}' was {why} {meta['id']}@{meta['version']}."})
-                        d["closed"].append(f"{sib['id']}@{sv['version']}")
-            with open(DECISIONS, "a") as f:
-                for r in rows:
-                    f.write(json.dumps(r) + "\n")
-                f.flush()
-                os.fsync(f.fileno())
+        if verdict == "changes" and not feedback.strip() and not any(
+                r["note"].strip() for r in d.get("ranking", []) + d.get("option_notes", [])):
+            return self.send(400, {"error": "say what to change on a valid option"})
+        latest = versions_of(meta["id"])[-1]
+        if latest["version"] != meta["version"]:
+            return self.send(409, {"error": "a newer version is ready; refresh before reviewing"})
+        if request_id:
+            d.update(request_id=request_id, request_hash=request_hash)
+        rows = [d]
+        slot = meta.get("slot")
+        if slot and verdict == "not_chosen":
+            filler = next((i for i in all_items() if i.get("slot") and i["slot"]["key"] == slot["key"] and i["project"] == meta.get("project", "") and i["status"] in FILLED), None)
+            d["feedback"] = feedback or (f"Slot '{slot['label']}' was filled by {filler['id']}@{filler['versions'][-1]['version']}." if filler else f"Closed in slot '{slot['label']}'.")
+        if slot and verdict in FILLED:
+            d["slot_label"], d["closed"] = slot["label"], []
+            for sib in all_items():
+                if sib["project"] != meta.get("project", "") or sib["id"] == meta["id"] or not sib.get("slot") or sib["slot"]["key"] != slot["key"]:
+                    continue
+                if sib["status"] in OPEN + FILLED:
+                    sv = sib["versions"][-1]
+                    why = "replaced by" if sib["status"] in FILLED else "filled by"
+                    rows.append({"decision_id": uuid.uuid4().hex, "id": sib["id"], "version": sv["version"], "dir": sv["dir"],
+                                 "project": sv.get("project", ""), "verdict": "not_chosen", "at": d["at"], "by": d["decision_id"],
+                                 "feedback": f"Slot '{slot['label']}' was {why} {meta['id']}@{meta['version']}."})
+                    d["closed"].append(f"{sib['id']}@{sv['version']}")
+        append_decisions(rows)
         self.send(200, d)
 
 
@@ -1261,11 +1389,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 def png(path, w, h, draw):
     """Write an RGB PNG with the standard library. draw(x, y) -> (r, g, b)."""
-    raw = b"".join(b"\x00" + bytes(c for x in range(w) for c in draw(x, y)) for y in range(h))
-    chunk = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
     with open(path, "wb") as f:
-        f.write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
-                + chunk(b"IDAT", zlib.compress(raw, 6)) + chunk(b"IEND", b""))
+        f.write(png_bytes(w, h, draw))
 
 
 def tiles(bg, colors, cols, rows, w, h, pad=0.12):
@@ -1343,9 +1468,8 @@ def decide_local(asset_id, version, verdict, feedback):
     meta = next(v for v in versions_of(asset_id) if v["version"] == version)
     d = {"decision_id": uuid.uuid4().hex, "id": asset_id, "version": version, "dir": meta["dir"], "project": meta.get("project", ""),
          "verdict": verdict, "feedback": feedback, "at": now()}
-    with LOCK:
-        with open(DECISIONS, "a") as f:
-            f.write(json.dumps(d) + "\n")
+    with store_lock():
+        append_decisions([d])
         write_json(DELIVERED, sorted(set(read_json(DELIVERED, [])) | {d["decision_id"]}))
 
 
@@ -1407,8 +1531,8 @@ def cmd_export(a):
     for it in all_items():
         if a.project and it["project"] != a.project:
             continue
-        v = next((x for x in reversed(it["versions"]) if x["status"] in FILLED), None)
-        if not v:
+        v = it["versions"][-1]
+        if v["status"] not in FILLED:
             continue
         d = v["decisions"][-1]
         rel = v["file"]

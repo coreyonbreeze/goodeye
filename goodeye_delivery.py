@@ -37,6 +37,7 @@ class DeliveryStore:
         os.close(fd)
         with self.db() as db:
             db.executescript('''
+                BEGIN IMMEDIATE;
                 CREATE TABLE IF NOT EXISTS subscriptions (
                     id TEXT PRIMARY KEY, project TEXT NOT NULL, thread TEXT NOT NULL,
                     executable TEXT NOT NULL, remote TEXT, active INTEGER NOT NULL,
@@ -68,6 +69,8 @@ class DeliveryStore:
                 db.execute("ALTER TABLE subscriptions ADD COLUMN runtime TEXT NOT NULL DEFAULT 'codex'")
             if 'last_seen' not in cols:
                 db.execute('ALTER TABLE subscriptions ADD COLUMN last_seen REAL')
+            if 'lease_token' not in {r[1] for r in db.execute('PRAGMA table_info(deliveries)')}:
+                db.execute('ALTER TABLE deliveries ADD COLUMN lease_token TEXT')
             db.execute('DROP INDEX IF EXISTS one_owner')
             db.execute('CREATE UNIQUE INDEX IF NOT EXISTS one_name ON subscriptions(project,name) WHERE active=1')
 
@@ -97,21 +100,25 @@ class DeliveryStore:
         thread, executable, remote = self._target(runtime, thread, executable, remote)
         with self.db() as db:
             db.execute('BEGIN IMMEDIATE')
-            old = db.execute('SELECT * FROM subscriptions WHERE project=? AND name=? AND active=1',
-                             (project, name)).fetchone()
-            if old:
-                if old['runtime'] != runtime or (runtime == 'codex' and old['thread'] != thread):
-                    raise ValueError(f'watcher {name!r} is already registered to another session; '
-                                     f'use `goodeye handoff --to NEWNAME --from {name}` or pick another name')
-                db.execute('UPDATE subscriptions SET last_seen=?, thread=? WHERE id=?', (time.time(), thread, old['id']))
-                return dict(db.execute('SELECT * FROM subscriptions WHERE id=?', (old['id'],)).fetchone())
-            # A new watcher starts with future decisions; it never replays history.
-            cutoff = db.execute('SELECT COALESCE(MAX(seq),0) FROM events').fetchone()[0]
-            ident = uuid.uuid4().hex
-            db.execute('''INSERT INTO subscriptions(id,project,thread,executable,remote,active,start_after,created,name,runtime,last_seen)
-                          VALUES(?,?,?,?,?,1,?,?,?,?,?)''',
-                       (ident, project, thread, executable, remote, cutoff, time.time(), name, runtime, time.time()))
-            return dict(db.execute('SELECT * FROM subscriptions WHERE id=?', (ident,)).fetchone())
+            return self._watch(db, project, name, runtime, thread, executable, remote)
+
+    def _watch(self, db, project, name, runtime, thread, executable, remote):
+        old = db.execute('SELECT * FROM subscriptions WHERE project=? AND name=? AND active=1',
+                         (project, name)).fetchone()
+        if old:
+            if old['runtime'] != runtime or (thread and old['thread'] and old['thread'] != thread):
+                raise ValueError(f'watcher {name!r} is already registered to another session; '
+                                 f'use `goodeye handoff --to NEWNAME --from {name}` or pick another name')
+            db.execute('UPDATE subscriptions SET last_seen=?,thread=?,executable=?,remote=? WHERE id=?',
+                       (time.time(), thread or old['thread'], executable, remote, old['id']))
+            return dict(db.execute('SELECT * FROM subscriptions WHERE id=?', (old['id'],)).fetchone())
+        # A new watcher starts with future decisions; it never replays history.
+        cutoff = db.execute('SELECT COALESCE(MAX(seq),0) FROM events').fetchone()[0]
+        ident = uuid.uuid4().hex
+        db.execute('''INSERT INTO subscriptions(id,project,thread,executable,remote,active,start_after,created,name,runtime,last_seen)
+                      VALUES(?,?,?,?,?,1,?,?,?,?,?)''',
+                   (ident, project, thread, executable, remote, cutoff, time.time(), name, runtime, time.time()))
+        return dict(db.execute('SELECT * FROM subscriptions WHERE id=?', (ident,)).fetchone())
 
     @staticmethod
     def _target(runtime, thread, executable, remote):
@@ -238,50 +245,42 @@ class DeliveryStore:
 
     def handoff(self, project, to_name, from_name=None, runtime='pull', thread=None, executable='codex', remote=None):
         """Move a watcher's claims, cursor and unacknowledged deliveries to a new or existing watcher."""
+        if not NAME_RE.fullmatch(to_name or ''):
+            raise ValueError('invalid destination watcher name')
+        thread, executable, remote = self._target(runtime, thread, executable, remote)
         with self.db() as db:
-            others = [r['name'] for r in db.execute(
-                'SELECT name FROM subscriptions WHERE project=? AND active=1 AND name<>?', (project, to_name))]
+            db.execute('BEGIN IMMEDIATE')
+            active = db.execute('SELECT * FROM subscriptions WHERE project=? AND active=1', (project,)).fetchall()
             if from_name is None:
-                mine = db.execute('SELECT 1 FROM subscriptions WHERE project=? AND active=1 AND name=?', (project, to_name)).fetchone()
-                if mine and not others:
+                others = [r['name'] for r in active if r['name'] != to_name]
+                if not others and any(r['name'] == to_name for r in active):
                     others = [to_name]
                 if len(others) != 1:
                     raise ValueError('name the watcher to take over with --from; active watchers: ' + (', '.join(others) or 'none'))
                 from_name = others[0]
-            src = db.execute('SELECT * FROM subscriptions WHERE project=? AND name=? AND active=1',
-                             (project, from_name)).fetchone()
+            src = next((r for r in active if r['name'] == from_name), None)
             if not src:
                 raise ValueError(f'no active watcher {from_name!r} in {project!r}')
-        if to_name == from_name:
-            # Same role, new session: rebind the watcher and hand its unacknowledged deliveries over again.
-            thread, executable, remote = self._target(runtime, thread, executable, remote)
-            with self.db() as db:
-                db.execute('BEGIN IMMEDIATE')
-                db.execute('UPDATE subscriptions SET runtime=?, thread=?, executable=?, remote=?, last_seen=? WHERE id=?',
+            if to_name == from_name:
+                db.execute('UPDATE subscriptions SET runtime=?,thread=?,executable=?,remote=?,last_seen=? WHERE id=?',
                            (runtime, thread, executable, remote, time.time(), src['id']))
-                open_ = [r['id'] for r in db.execute(
-                    "SELECT id FROM deliveries WHERE subscription=? AND status IN ('pending','queued')", (src['id'],))]
-                db.execute("UPDATE deliveries SET status='pending', next_attempt=0, lease_until=0, receipt=NULL, queued=NULL "
-                           "WHERE subscription=? AND status IN ('pending','queued')", (src['id'],))
-            return {'from': from_name, 'to': to_name, 'moved_deliveries': open_}
-        dst = self.watch(project, to_name, runtime, thread, executable, remote)
-        with self.db() as db:
-            db.execute('BEGIN IMMEDIATE')
-            db.execute('UPDATE claims SET owner=?, claimed=? WHERE project=? AND owner=?',
-                       (to_name, time.time(), project, from_name))
-            # Inherit the old cursor and history so nothing replays and nothing in flight is lost.
-            db.execute('UPDATE subscriptions SET start_after=MIN(start_after,?) WHERE id=?', (src['start_after'], dst['id']))
-            db.execute('INSERT OR IGNORE INTO members SELECT ?,event,delivery FROM members WHERE subscription=?',
-                       (dst['id'], src['id']))
+                dst = src
+            else:
+                dst = self._watch(db, project, to_name, runtime, thread, executable, remote)
+                db.execute('UPDATE claims SET owner=?,claimed=? WHERE project=? AND owner=?',
+                           (to_name, time.time(), project, from_name))
+                db.execute('UPDATE subscriptions SET start_after=MIN(start_after,?) WHERE id=?', (src['start_after'], dst['id']))
+                db.execute('INSERT OR IGNORE INTO members SELECT ?,event,delivery FROM members WHERE subscription=?',
+                           (dst['id'], src['id']))
+                db.execute('UPDATE subscriptions SET active=0 WHERE id=?', (src['id'],))
             open_ = [r['id'] for r in db.execute(
                 "SELECT id FROM deliveries WHERE subscription=? AND status IN ('pending','queued')", (src['id'],))]
-            for ident in open_:
-                db.execute("UPDATE deliveries SET subscription=?, status='pending', next_attempt=0, lease_until=0, "
-                           "receipt=NULL, queued=NULL WHERE id=?", (dst['id'], ident))
-                # The copy above gave the new watcher these rows; drop the old ones so inbox lists each event once.
-                db.execute('DELETE FROM members WHERE delivery=? AND subscription=?', (ident, src['id']))
-            db.execute('UPDATE subscriptions SET active=0 WHERE id=?', (src['id'],))
-        return {'from': from_name, 'to': to_name, 'moved_deliveries': open_}
+            db.execute("UPDATE deliveries SET subscription=?,status='pending',next_attempt=0,lease_until=0,"
+                       "lease_token=NULL,receipt=NULL,queued=NULL,error=NULL "
+                       "WHERE subscription=? AND status IN ('pending','queued')", (dst['id'], src['id']))
+            # Keep source membership as the delivery's immutable contents. The destination may
+            # already have a skipped or delivered membership for the same event.
+            return {'from': from_name, 'to': to_name, 'moved_deliveries': open_}
 
     # ---------- routing and delivery ----------
 
@@ -333,7 +332,7 @@ class DeliveryStore:
             if not row:
                 raise ValueError('unknown delivery')
             out = dict(row)
-            out['decisions'] = [json.loads(r[0]) for r in db.execute('''SELECT payload FROM events
+            out['decisions'] = [json.loads(r['payload']) for r in db.execute('''SELECT DISTINCT seq,payload FROM events
                 JOIN members ON events.seq=members.event WHERE delivery=? ORDER BY seq''', (ident,))]
             for d in out['decisions']:
                 if d.get('kind') != 'probe':
@@ -347,7 +346,8 @@ class DeliveryStore:
         """Pending deliveries for a pull watcher. Handing them to the waiter's output is the queue step."""
         with self.db() as db:
             db.execute('BEGIN IMMEDIATE')
-            ids = [r[0] for r in db.execute("SELECT id FROM deliveries WHERE subscription=? AND status='pending' ORDER BY created",
+            ids = [r[0] for r in db.execute("SELECT d.id FROM deliveries d JOIN subscriptions s ON s.id=d.subscription "
+                                            "WHERE d.subscription=? AND d.status='pending' AND s.active=1 AND s.runtime='pull' ORDER BY d.created",
                                             (sub_id,))]
             for ident in ids:
                 db.execute("UPDATE deliveries SET status='queued',queued=?,receipt='stdout',attempts=attempts+1 WHERE id=?",
@@ -368,7 +368,7 @@ class DeliveryStore:
             row = db.execute('SELECT status FROM deliveries WHERE id=?', (ident,)).fetchone()
             if not row or row['status'] == 'acknowledged':
                 raise ValueError('unknown or already acknowledged delivery')
-            db.execute("UPDATE deliveries SET status='pending',next_attempt=0,lease_until=0 WHERE id=?", (ident,))
+            db.execute("UPDATE deliveries SET status='pending',next_attempt=0,lease_until=0,lease_token=NULL WHERE id=?", (ident,))
 
     def status(self, project=None):
         with self.db() as db:
@@ -396,8 +396,9 @@ class DeliveryStore:
             if not row:
                 return False
             row = dict(row)
-            db.execute('UPDATE deliveries SET lease_until=?,attempts=attempts+1 WHERE id=?',
-                       (time.time() + 60, row['id']))
+            lease_token = uuid.uuid4().hex
+            db.execute('UPDATE deliveries SET lease_until=?,lease_token=?,attempts=attempts+1 WHERE id=?',
+                       (time.time() + 60, lease_token, row['id']))
         ident = row['id']
         # Only stable identifiers go into the wake message. Review text is loaded as data from inbox.
         message = (f'GoodEye feedback notification. Delivery {ident}. '
@@ -417,12 +418,12 @@ class DeliveryStore:
             if result.returncode != 0 or not match:
                 raise RuntimeError('Codex did not confirm queue acceptance')
             with self.db() as db:
-                db.execute("UPDATE deliveries SET status='queued',queued=?,receipt=?,error=NULL,lease_until=0 WHERE id=? AND status='pending'",
-                           (time.time(), match.group(1), ident))
+                db.execute("UPDATE deliveries SET status='queued',queued=?,receipt=?,error=NULL,lease_until=0 WHERE id=? AND status='pending' AND lease_token=?",
+                           (time.time(), match.group(1), ident, lease_token))
         except (OSError, subprocess.SubprocessError, RuntimeError):
             # Retry failed/ambiguous sends; a crash after acceptance can duplicate a wake, never a verdict.
             delay = min(300, 2 ** min(row['attempts'] + 1, 8))
             with self.db() as db:
-                db.execute('UPDATE deliveries SET error=?,next_attempt=?,lease_until=0 WHERE id=? AND status=\'pending\'',
-                           ('Codex queue unavailable or acceptance unconfirmed; will retry', time.time() + delay, ident))
+                db.execute('UPDATE deliveries SET error=?,next_attempt=?,lease_until=0 WHERE id=? AND status=\'pending\' AND lease_token=?',
+                           ('Codex queue unavailable or acceptance unconfirmed; will retry', time.time() + delay, ident, lease_token))
         return True
