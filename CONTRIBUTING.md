@@ -16,3 +16,12 @@ PLAYWRIGHT_MODULE=/absolute/path/to/node_modules/playwright node tests/phone-pla
 ```
 
 This checks normal playback, a blocked autoplay attempt followed by a tap, retry after a failed download, overlapping verdict prevention, retry after a lost save response, and a failed refresh after a successful save. It does not verify a physical iPhone or its Home Screen app.
+
+Review-studio integration checks (Playwright with WebKit, no ffmpeg needed):
+
+```sh
+node tests/studio.cjs
+# PLAYWRIGHT_MODULE supports an existing installation, as above.
+```
+
+This checks queue search, project isolation, per-version feedback drafts, keyboard controls, placement details, desktop action visibility, dark mode, and phone navigation. It uses an isolated demo store.

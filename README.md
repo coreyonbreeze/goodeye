@@ -4,7 +4,7 @@
 
 Your coding agent (Claude Code, Codex, or anything with a shell) makes banners, icons, email GIFs, videos and website loops. Instead of opening folders and typing "yes, the third one, but smaller" back into chat, the agent submits each asset to GoodEye. You review it in the browser, inside a mockup of where it will appear, and click **Approve**, **Request changes**, or **Reject**. Talk your notes into the text box. Your verdict goes to the agent session that owns the item: Codex through its local message queue, Claude Code and other shells through a background `goodeye wait`. Several sessions can split one project by claims, and a new session can take over a role with one command.
 
-![A banner under review: LinkedIn mockup, judge scores across versions, and the agent's reasoning](docs/board.jpg)
+![A banner under review: LinkedIn mockup, judge scores across versions, and the agent's reasoning](docs/review-studio.png)
 
 ## Why
 
@@ -166,7 +166,7 @@ Phone mode lets devices on your Wi-Fi (or your Tailscale network) open the board
 
 On a phone the board is a card deck:
 
-<p><img src="docs/phone-deck.jpg" width="240" alt="Card deck on a phone"> <img src="docs/phone-swipe.jpg" width="240" alt="Swiping right to approve"></p>
+<p><img src="docs/review-studio-phone.png" width="240" alt="Card deck on a phone"> <img src="docs/phone-swipe.jpg" width="240" alt="Swiping right to approve"></p>
 
 
 - **The card fits the asset.** Tall stories get height; wide banners get a 2× center crop so line art reads without zooming. What changed, the decisions and the scores fill the rest of the card.
@@ -190,6 +190,10 @@ On a phone the board is a card deck:
 - **This device** (saved in the browser): vibration, undo window (3 to 8 seconds), swipe distance, whether the phone opens to cards or the list, theme (system, dark, light), jumping to the next item after a verdict, quick-reply chips, and replaying the swipe tutorial.
 
 ## Desktop review
+
+The review studio uses warm light and dark themes, a dedicated preview area, and a compact queue. Search by title, ID, or project; use the project selector to narrow the workspace. Feedback drafts stay with each asset and version while you navigate. Placement warnings expand in place, and the desktop Undo control stays in the header.
+
+Press **/** to search or **?** for keyboard shortcuts. Queue entries and version controls also work with the keyboard. The header reports connection loss and reconnects automatically.
 
 - **Undo.** A verdict waits 4 seconds (8 when the judge scored it below the bar or it closes others in a slot) before it is sent. Press **⌘Z** or **U**, or click Undo: the item and your note come back.
 - **"v2 answers your note"** sits under the version buttons: your last note, then what the agent changed.
