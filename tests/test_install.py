@@ -19,6 +19,7 @@ class InstallTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual((project / "bin/goodeye").resolve(), ROOT / "goodeye.py")
             self.assertEqual((project / ".claude/skills/goodeye").resolve(), ROOT / "skills/goodeye")
+            self.assertEqual((project / ".claude/skills/goodeye-brand").resolve(), ROOT / "skills/goodeye-brand")
 
     def test_existing_skill_directory_is_preserved(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -768,6 +768,53 @@ body:not(.home-mode) #projects-home { display: none; }
   .profile-fields .wide { grid-column: auto; }
   #topbar b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px; }
 }
+
+.direction-shell { padding: 28px; }
+.direction-shell h3 { font: 26px/1.2 var(--display); margin: 16px 0 12px; }
+.direction-shell header .eyebrow { margin-bottom: 8px; }
+.direction-intro { padding: 18px 0 24px; border-bottom: 1px solid var(--line); }
+.direction-steps { display: flex; flex-wrap: wrap; gap: 10px 24px; font-size: 10px; color: var(--text-muted); letter-spacing: .06em; margin-top: 22px; }
+#direction-start { padding: 24px 0; }
+#direction-start > span { display: inline-block; font-size: 12px; color: var(--text-muted); margin: 12px; }
+.direction-shell textarea { width: 100%; min-height: 105px; resize: vertical; box-sizing: border-box; background: var(--bg); border: 1px solid var(--line); color: var(--text-primary); padding: 12px; border-radius: 8px; font: inherit; font-size: 13px; line-height: 1.6; }
+.direction-shell summary { cursor: pointer; font-size: 13px; }
+.direction-sources, .direction-approved { border-top: 1px solid var(--line); padding: 16px 0; }
+.direction-approved > summary { display: flex; justify-content: space-between; }
+.direction-shell dl { font-size: 12px; }
+.direction-shell dt { font-weight: 600; margin-top: 16px; }
+.direction-shell dd { margin: 6px 0 16px; color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
+#direction-settings { font-size: 11px; }
+.direction-conversation { border-top: 1px solid var(--line); padding-top: 12px; }
+.direction-turn { border-left: 2px solid var(--line); padding: 4px 0 16px 18px; margin: 14px 0; }
+.direction-turn p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 10px 0; }
+.direction-turn-meta { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; font-size: 11px; color: var(--text-muted); }
+.direction-turn small { font-size: 11px; color: var(--text-muted); }
+.direction-agent-note { padding: 12px 16px; background: var(--surface-2); border-radius: 8px; margin-top: 14px; font-size: 12px; }
+.direction-empty { border: 1px dashed var(--line); border-radius: 10px; padding: 24px; margin-bottom: 24px; color: var(--text-secondary); font-size: 13px; line-height: 1.8; }
+.direction-proposal { border: 1px solid var(--line); padding: 22px; border-radius: 12px; margin: 20px 0; }
+.direction-proposal > button { margin-top: 20px; }
+.direction-proposal p, .direction-proposal li { overflow-wrap: anywhere; white-space: pre-wrap; }
+.direction-proposal li { font-size: 12px; margin-bottom: 8px; }
+.direction-artifacts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin: 20px 0; }
+.direction-artifacts figure { margin: 0; min-width: 0; }
+.direction-artifacts img, .direction-artifacts video { width: 100%; height: 180px; object-fit: contain; background: var(--surface-2); border-radius: 8px; }
+.direction-artifacts figcaption button { font-size: 11px; margin: 8px 0; text-align: left; }
+.direction-artifacts summary { font-size: 10px; color: var(--text-muted); }
+#direction-compose { padding: 24px 0 0; border-top: 1px solid var(--line); }
+#direction-compose > label { font-size: 15px; font-weight: 600; display: block; margin-bottom: 12px; }
+.direction-controls { display: flex; align-items: flex-end; gap: 12px; margin-top: 12px; }
+.direction-controls label { display: grid; gap: 6px; flex: 1; font-size: 11px; color: var(--text-muted); min-width: 0; }
+.direction-controls select { width: 100%; background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--line); padding: 10px 6px; border-radius: 6px; min-height: 38px; }
+.direction-hint, #source-result { font-size: 11px !important; color: var(--text-muted); }
+#direction-result { overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .direction-shell { padding: 22px; }
+  .direction-controls { flex-wrap: wrap; }
+  .direction-controls label { flex-basis: 40%; }
+  .direction-controls > button { width: 100%; }
+  .direction-artifacts { grid-template-columns: 1fr; }
+  #direction-start > span { margin: 12px 0; }
+}
 </style>
 </head>
 <body class="home-mode">
@@ -857,7 +904,7 @@ function media(v, { cls = "" } = {}) {
   return `<img class="${cls}" src="${u}" alt="${esc(v.title)}">`;
 }
 
-const PROFILE_LABELS = { logos: "Logos & assets", colors: "Color palette", typography: "Typography", voice: "Voice & writing", references: "References", visual_rules: "Visual & motion rules", export_rules: "Export requirements" };
+const PROFILE_LABELS = { strategy: "Strategy & positioning", logos: "Logos & assets", colors: "Color palette", typography: "Typography", voice: "Voice & writing", references: "References", visual_rules: "Visual & motion rules", export_rules: "Export requirements" };
 function workspaceHash() { return projectFilter === null ? "#inbox" : "#project/" + (projects.find(p => p.name === projectFilter)?.key || ""); }
 function applyWorkspace() {
   document.body.classList.toggle("home-mode", homeMode);
@@ -926,10 +973,140 @@ function organizationHtml(it, v) {
   const fields = Object.entries(v.profile_snapshot || {}).filter(([, value]) => value);
   return `<div class="asset-organization"><label>Collection <select data-collection-item="${esc(it.id)}" aria-label="Asset collection"><option value="">Unsorted</option>${collections.map(c => `<option value="${esc(c)}" ${c === it.collection ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></label><span>${revision == null ? "Submitted before direction tracking" : `Submitted with direction r${revision}${p && p.revision !== revision ? ` · current r${p.revision}` : ""}`}</span></div>${fields.length ? `<details class="profile-snapshot"><summary>Direction used for this version</summary><dl>${fields.map(([key, value]) => `<dt>${esc(PROFILE_LABELS[key] || key)}</dt><dd>${esc(value)}</dd>`).join("")}</dl></details>` : ""}`;
 }
-function editProject(project) {
+const directionDrafts = new Map();
+let refreshDirection = null;
+function editProject(project) { return project ? openDirection(project) : editProjectSettings(); }
+async function openDirection(project) {
+  const dialog = $('#profile-dialog'), name = project.name;
+  const shell = document.createElement('div'); shell.className = 'direction-shell';
+  const draft = directionDrafts.get(name) || {message:'', scope:'all', agent:''};
+  const watchers = subscriptions.filter(w => w.project === name);
+  const defaultAgent = watchers.find(w => w.claims?.includes('brand-direction'))?.name || (watchers.length === 1 ? watchers[0].name : '');
+  shell.innerHTML = `<header><div><div class="eyebrow">${esc(name)}</div><h2 id="profile-title">Brand & direction</h2></div><button type="button" id="close-direction">Close</button></header>
+    <div class="direction-intro"><h3>A direction with a reason.</h3><p>Start from what makes this project yours. Your agent researches the evidence, develops the strategy, and brings back visual work for you to shape.</p><div class="direction-steps"><span>01 · Evidence</span><span>02 · Strategy</span><span>03 · Visual exploration</span><span>04 · The system</span></div></div>
+    <div id="direction-start"><button id="copy-direction-prompt">Copy agent starter</button><span>Connect an agent once. Keep the conversation here.</span><details id="direction-prompt-details"><summary>View starter prompt</summary><textarea id="direction-prompt" readonly aria-label="Agent starter prompt"></textarea></details></div>
+    <details class="direction-sources"><summary>Brand bibles, references & source material</summary><p>Paths, links, and context for your agent. Existing approved work should guide the process.</p><textarea id="direction-sources" aria-label="Brand source material" placeholder="Brand bible path or link\nApproved asset folder\nReferences and what you like about them"></textarea><button id="save-direction-sources">Save sources</button><span id="source-result" role="status"></span><div id="source-conflict" hidden><p>Saved source material changed. Compare it with your draft above.</p><textarea id="saved-direction-sources" readonly aria-label="Current saved sources"></textarea><button id="replace-direction-sources">Save my draft instead</button></div></details>
+    <details class="direction-approved"><summary>Current approved direction <span id="direction-revision"></span></summary><div id="direction-current"></div><button id="direction-settings">Edit project settings & guidelines manually</button></details>
+    <section class="direction-conversation" aria-label="Direction conversation"><h3>The conversation</h3><div id="direction-history"><p>Loading the conversation…</p></div></section>
+    <section id="direction-proposals" aria-label="Proposed direction"></section>
+    <form id="direction-compose"><label for="direction-message">What should we explore or change?</label><textarea id="direction-message" required maxlength="20000" placeholder="Make the typography less corporate. Keep the palette and the mark.\nOr: rethink the whole direction around…">${esc(draft.message)}</textarea><div class="direction-controls"><label>Scope<select id="direction-scope"><option value="all">Whole direction</option>${Object.entries(PROFILE_LABELS).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select></label><label>Agent<select id="direction-agent"><option value="">Connect an agent later</option>${watchers.map(w => `<option value="${esc(w.name)}">${esc(w.name)}</option>`).join('')}</select></label><button type="submit" class="primary" id="send-direction">Send request</button></div><p id="direction-result" role="status"></p><p class="direction-hint">Requests stay in this project. Proposed changes wait for your review; approved guidelines stay in place.</p></form>`;
+  dialog.replaceChildren(shell);
+  $('#direction-scope', shell).value = draft.scope;
+  $('#direction-agent', shell).value = draft.agent || defaultAgent;
+  let data = null, sequence = 0, sourcesDirty = false, sourceSerial = null;
+  const active = () => dialog.open && dialog.firstElementChild === shell;
+  const remember = () => directionDrafts.set(name, { ...directionDrafts.get(name), message:$('#direction-message',shell).value, scope:$('#direction-scope',shell).value, agent:$('#direction-agent',shell).value });
+  shell.addEventListener('input', remember);
+  shell.addEventListener('change', remember);
+  $('#close-direction',shell).onclick = () => {remember(); dialog.close();};
+  $('#direction-settings',shell).onclick = () => {remember(); refreshDirection = null; editProjectSettings(projects.find(p => p.name === name) || project);};
+  const profileList = profile => Object.entries(profile).filter(([,v]) => v).map(([k,v]) => `<dt>${esc(PROFILE_LABELS[k] || k)}</dt><dd>${esc(v)}</dd>`).join('');
+  function draw(next) {
+    if (!active()) return;
+    data = next;
+    const agentSelect=$('#direction-agent',shell), chosen=agentSelect.value;
+    const available=subscriptions.filter(w=>w.project===name);
+    const options='<option value="">Auto · project brand agent</option>'+available.map(w=>`<option value="${esc(w.name)}">${esc(w.name)}</option>`).join('');
+    if(agentSelect.innerHTML!==options){agentSelect.innerHTML=options;agentSelect.value=available.some(w=>w.name===chosen)?chosen:'';}
+    $('#direction-prompt',shell).value = data.prompt;
+    $('#direction-revision',shell).textContent = `r${data.revision}`;
+    const content = profileList(data.profile);
+    $('#direction-current',shell).innerHTML = content ? `<dl>${content}</dl>` : '<p>No approved direction is saved here yet. The agent will first check for an existing brand bible and approved assets.</p>';
+    if (!sourcesDirty) { $('#direction-sources',shell).value = data.sources; sourceSerial = data.source_revision; }
+    const status = {waiting:'Saved · waiting for an agent', queued:'Sent to agent', working:'Agent working', needs_input:'Your input needed', proposed:'Ready for your review', accepted:'Accepted', superseded:'Continued in a later request'};
+    $('#direction-history',shell).innerHTML = data.requests.length ? data.requests.map(r => `<article class="direction-turn"><div class="direction-turn-meta"><b>You · ${esc(r.scope === 'all' ? 'Whole direction' : PROFILE_LABELS[r.scope])}</b><span>${esc(status[r.status] || r.status)}</span></div><p>${esc(r.message)}</p>${r.delivery_error ? `<p class="direction-delivery-error">${esc(r.delivery_error)}. Your request is saved.</p>` : r.delivery_status === 'acknowledged' ? `<small>${esc(r.receiving_agent || r.agent)} read this request.</small>` : r.delivery_status === 'queued' ? `<small>Queued for ${esc(r.receiving_agent || r.agent)} · awaiting receipt.</small>` : ''}${r.updates.map(u => `<div class="direction-agent-note"><b>${esc(r.receiving_agent || r.agent || 'Agent')}</b><p>${esc(u.message)}</p></div>`).join('')}${r.accepted ? `<small>Adopted in revision ${r.accepted_revision}.</small>` : ''}</article>`).join('') : '<div class="direction-empty">Have an existing identity? Add its sources above.<br>Starting fresh? Copy the starter or send your first brief below.</div>';
+    const current = data.requests.at(-1);
+    const proposals = current && current.status === 'proposed' ? current.proposals : [];
+    $('#direction-proposals',shell).innerHTML = proposals.map(p => `<article class="direction-proposal"><div class="eyebrow">Proposed ${esc(p.phase)} · not yet adopted</div><h3>${esc(p.title)}</h3><p>${esc(p.rationale)}</p>${p.artifacts.length ? `<div class="direction-artifacts">${p.artifacts.map(a => `<figure>${a.kind === 'video' ? `<video src="${fileUrl(a)}" controls muted playsinline></video>` : `<img src="${fileUrl(a)}" alt="${esc(a.title)}" loading="lazy">`}<figcaption><button type="button" data-direction-asset="${esc(a.id)}" data-version="${esc(a.version)}">${esc(a.title)} · ${esc(a.version)} ↗</button><details><summary>${esc(a.origin === 'generated' ? a.tool : a.origin)} · provenance</summary><p>${esc(a.provenance)}</p>${a.prompt ? `<p>${esc(a.prompt)}</p>` : ''}</details></figcaption></figure>`).join('')}</div>` : ''}<details><summary>Proposed guidelines & evidence</summary><dl>${profileList(p.profile)}</dl><ul>${p.evidence.map(e => `<li>${esc(e)}</li>`).join('')}</ul>${p.production_notes ? `<p>${esc(p.production_notes)}</p>` : ''}</details><button class="primary" data-accept-direction="${esc(p.id)}">${p.phase === 'strategy' ? 'Use this strategy' : p.phase === 'concept' ? 'Choose this direction' : 'Adopt this direction'}</button></article>`).join('');
+    shell.querySelectorAll('[data-accept-direction]').forEach(b => b.onclick = async () => {
+      b.disabled = true;
+      try {
+        const next = await post({action:'accept', request:current.id, proposal:b.dataset.acceptDirection});
+        if (active()) { draw(next); $('#direction-result',shell).textContent = 'Direction adopted. Future submissions will use the new revision.'; }
+        await load(true);
+      } catch (error) { if(active()) $('#direction-result',shell).textContent = error.message; }
+      finally { b.disabled = false; }
+    });
+    shell.querySelectorAll('[data-direction-asset]').forEach(b => b.onclick = () => {
+      remember(); const it = items.find(i => i.project === name && i.asset_id === b.dataset.directionAsset);
+      if (!it) return;
+      dialog.close(); openWorkspace(name,it); select(it.id,b.dataset.version);
+    });
+  }
+  async function fetchState() {
+    const n = ++sequence;
+    const response = await fetch('/api/direction?project=' + encodeURIComponent(name));
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Could not load direction');
+    if (active() && n === sequence) draw(result);
+  }
+  async function post(body) {
+    const response = await fetch('/api/direction', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,project:name})});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Could not save direction');
+    ++sequence;
+    return result;
+  }
+  $('#copy-direction-prompt',shell).onclick = async () => {
+    if (!data) return;
+    try { await navigator.clipboard.writeText(data.prompt); $('#direction-result',shell).textContent = 'Starter copied. Paste it into your agent to connect this workflow.'; }
+    catch { $('#direction-prompt-details',shell).open = true; $('#direction-prompt',shell).focus(); $('#direction-prompt',shell).select(); $('#direction-result',shell).textContent = 'Select and copy the starter above.'; }
+  };
+  $('#direction-sources',shell).oninput = () => {sourcesDirty = true;};
+  $('#save-direction-sources',shell).onclick = async e => {
+    e.target.disabled = true;
+    const submittedSources=$('#direction-sources',shell).value;
+    try {
+      const next = await post({action:'sources',sources:submittedSources,expected_source_revision:sourceSerial});
+      if(active()) {
+        sourcesDirty=$('#direction-sources',shell).value!==submittedSources;
+        sourceSerial=next.source_revision;
+        $('#source-conflict',shell).hidden=true;draw(next);
+        $('#source-result',shell).textContent=sourcesDirty?'Earlier version saved; your newer edits are still here.':'Saved';
+      }
+      await load(true);
+    }
+    catch(error) {
+      if(active()) {
+        $('#source-result',shell).textContent=error.message;
+        await fetchState().catch(()=>{});
+        if(active() && data.source_revision !== sourceSerial) {
+          $('#source-conflict',shell).hidden=false;
+          $('#saved-direction-sources',shell).value=data.sources;
+          const comparedRevision=data.source_revision;
+          $('#replace-direction-sources',shell).onclick=()=>{sourceSerial=comparedRevision;$('#source-conflict',shell).hidden=true;$('#save-direction-sources',shell).click();};
+        }
+      }
+    }
+    finally {e.target.disabled=false;}
+  };
+  $('#direction-compose',shell).onsubmit = async e => {
+    e.preventDefault(); remember();
+    const d = directionDrafts.get(name), signature = JSON.stringify([d.message,d.scope,d.agent]);
+    if (d.signature !== signature) {d.request_id=Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2,"0")).join(""); d.signature=signature;}
+    const body = {action:'request',request_id:d.request_id,message:d.message,scope:d.scope,agent:d.agent};
+    const button = $('#send-direction',shell); button.disabled=true;
+    try {
+      const next = await post(body);
+      const latest = directionDrafts.get(name);
+      if (latest?.message === d.message && latest.scope === d.scope && latest.agent === d.agent) directionDrafts.delete(name);
+      if (active()) {
+        if ($('#direction-message',shell).value === d.message) $('#direction-message',shell).value='';
+        draw(next); $('#direction-result',shell).textContent=(d.agent || subscriptions.some(w=>w.project===name && w.claims?.includes('brand-direction'))) ? 'Request saved for your agent.' : 'Request saved. Copy the starter to connect an agent; it will resume here.';
+      }
+      await load(true);
+    } catch(error) {if(active()) $('#direction-result',shell).textContent='Save unconfirmed: '+error.message+'. Your request is kept here; retry to confirm.';}
+    finally {button.disabled=false;}
+  };
+  refreshDirection = () => active() ? fetchState().catch(error => {if(active()) $('#direction-result',shell).textContent=error.message;}) : Promise.resolve();
+  dialog.showModal();
+  await refreshDirection();
+}
+
+function editProjectSettings(project) {
   const p = project || { name: "", icon: "", accent: "#326653", description: "", collections: [], revision: 0, profile: {} };
   const dialog = $("#profile-dialog");
-  const hints = { logos: "Approved logo files, paths, or links", colors: "Color names, hex values, and their uses", typography: "Typefaces, weights, and hierarchy", voice: "Tone, terms to use, and terms to avoid", references: "Reference links, moodboards, and what to take from them", visual_rules: "Composition, character proportions, materials, motion, and rules to follow", export_rules: "File formats, dimensions, naming, transparency, and delivery specs" };
+  const hints = { strategy: "Purpose, audience, origin, position, and the decisions that make this identity specific", logos: "Approved logo files, paths, or links", colors: "Color names, hex values, and their uses", typography: "Typefaces, weights, and hierarchy", voice: "Tone, terms to use, and terms to avoid", references: "Reference links, moodboards, and what to take from them", visual_rules: "Composition, character proportions, materials, motion, and rules to follow", export_rules: "File formats, dimensions, naming, transparency, and delivery specs" };
   dialog.innerHTML = `<form><header><h2 id="profile-title">${project ? "Brand & direction" : "A new project"}</h2><button type="button" id="close-profile">Close</button></header><p>${project ? `${esc(p.name)} · revision ${p.revision}. ` : "Give this body of work its own space. "}Agents receive these guidelines in their project brief. New submissions save a copy; earlier versions keep their original direction.</p><div class="profile-fields">
     <label class="wide">Project name<input name="name" required maxlength="120" value="${esc(p.name)}" ${project ? "readonly" : "autofocus"}></label>
     <label>Project icon or initials<input name="icon" maxlength="12" value="${esc(p.icon)}" placeholder="MO"></label><label>Workspace accent<input name="accent" type="color" value="${esc(p.accent)}"></label>
@@ -1743,6 +1920,7 @@ async function load(force) {
   const oldSel = item(sel.id), oldLen = oldSel ? oldSel.versions.length : 0;
   projects = data.projects || [];
   items = (Array.isArray(data) ? data : data.items).map(i => ({ ...i, asset_id: i.id, id: i.key || i.id, versions: i.versions.map(v => ({ ...v, asset_id: v.id, id: i.key || i.id })) })); agents = data.agents || []; subscriptions = data.subscriptions || []; claims = data.claims || []; holds = data.holds || []; if (data.mkey && data.mkey !== mkey) { mkey = data.mkey; if (!force) lastSig = ""; } staleH = data.stale_hours || 12; lastSig = sig;
+  if (refreshDirection) refreshDirection();
   if (!started) { started = true; routeWorkspace(); return; }
   applyWorkspace();
   if (homeMode) { renderProjects(); return; }

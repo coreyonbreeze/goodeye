@@ -59,6 +59,9 @@ class DeliveryStore:
                 CREATE TABLE IF NOT EXISTS holds (
                     project TEXT NOT NULL, item TEXT NOT NULL, note TEXT NOT NULL,
                     held REAL NOT NULL, PRIMARY KEY(project,item));
+                CREATE TABLE IF NOT EXISTS watcher_redirects (
+                    project TEXT NOT NULL, name TEXT NOT NULL, target TEXT NOT NULL,
+                    PRIMARY KEY(project,name));
             ''')
             cols = {r[1] for r in db.execute('PRAGMA table_info(subscriptions)')}
             # 0.7 stored one Codex owner per project. Upgrade in place: name old rows, allow many watchers.
@@ -103,6 +106,7 @@ class DeliveryStore:
             return self._watch(db, project, name, runtime, thread, executable, remote)
 
     def _watch(self, db, project, name, runtime, thread, executable, remote):
+        db.execute('DELETE FROM watcher_redirects WHERE project=? AND name=?', (project, name))
         old = db.execute('SELECT * FROM subscriptions WHERE project=? AND name=? AND active=1',
                          (project, name)).fetchone()
         if old:
@@ -273,6 +277,7 @@ class DeliveryStore:
                 db.execute('INSERT OR IGNORE INTO members SELECT ?,event,delivery FROM members WHERE subscription=?',
                            (dst['id'], src['id']))
                 db.execute('UPDATE subscriptions SET active=0 WHERE id=?', (src['id'],))
+                db.execute('INSERT OR REPLACE INTO watcher_redirects VALUES(?,?,?)', (project, from_name, to_name))
             open_ = [r['id'] for r in db.execute(
                 "SELECT id FROM deliveries WHERE subscription=? AND status IN ('pending','queued')", (src['id'],))]
             db.execute("UPDATE deliveries SET subscription=?,status='pending',next_attempt=0,lease_until=0,"
@@ -283,6 +288,42 @@ class DeliveryStore:
             return {'from': from_name, 'to': to_name, 'moved_deliveries': open_}
 
     # ---------- routing and delivery ----------
+
+    @staticmethod
+    def _resolve_watcher(db, project, target):
+        seen = set()
+        while target and target not in seen:
+            seen.add(target)
+            sub = db.execute('SELECT id,name FROM subscriptions WHERE project=? AND name=? AND active=1', (project, target)).fetchone()
+            if sub:
+                return sub
+            redirect = db.execute('SELECT target FROM watcher_redirects WHERE project=? AND name=?', (project, target)).fetchone()
+            target = redirect['target'] if redirect else None
+        return None
+
+    def direct_event(self, project, target, payload):
+        """Publish a workflow turn to one existing watcher, including turns saved before it joined."""
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            event = db.execute('SELECT project FROM events WHERE id=?', (payload['decision_id'],)).fetchone()
+            if event and event['project'] != project:
+                raise ValueError('workflow event id belongs to another project')
+            prior = db.execute('SELECT m.delivery FROM members m JOIN events e ON e.seq=m.event WHERE e.id=? AND e.project=? AND m.delivery<>? LIMIT 1',
+                               (payload['decision_id'], project, SKIP)).fetchone()
+            if prior:
+                return prior['delivery']
+            sub = self._resolve_watcher(db, project, target)
+            if not sub:
+                return None
+            target = sub['name']
+            event = {**payload, 'project': project, 'kind': 'direction', 'target': target}
+            db.execute('INSERT OR IGNORE INTO events(id,project,payload,created) VALUES(?,?,?,?)',
+                       (event['decision_id'], project, json.dumps(event), time.time()))
+            seq = db.execute('SELECT seq FROM events WHERE id=?', (event['decision_id'],)).fetchone()[0]
+            ident = uuid.uuid4().hex
+            db.execute('INSERT INTO deliveries(id,subscription,status,created) VALUES(?,?,?,?)', (ident, sub['id'], 'pending', time.time()))
+            db.execute('INSERT INTO members VALUES(?,?,?)', (sub['id'], seq, ident))
+            return ident
 
     def make_batches(self, debounce=2):
         with self.db() as db:
@@ -296,7 +337,7 @@ class DeliveryStore:
                 mine, skip = [], []
                 for ev in events:
                     p = json.loads(ev['payload'])
-                    if p.get('kind') == 'probe':
+                    if p.get('kind') in ('probe', 'direction'):
                         ok = p.get('target') in (None, sub['name'])
                     else:
                         owner, _, active = self._owner(db, sub['project'], p.get('id', ''))
@@ -335,7 +376,7 @@ class DeliveryStore:
             out['decisions'] = [json.loads(r['payload']) for r in db.execute('''SELECT DISTINCT seq,payload FROM events
                 JOIN members ON events.seq=members.event WHERE delivery=? ORDER BY seq''', (ident,))]
             for d in out['decisions']:
-                if d.get('kind') != 'probe':
+                if d.get('kind') not in ('probe', 'direction'):
                     owner, pattern, active = self._owner(db, out['project'], d.get('id', ''))
                     d['owner'] = owner if active else None
             out['watchers'] = [r[0] for r in db.execute(
@@ -405,6 +446,7 @@ class DeliveryStore:
                    f'Run goodeye inbox --store {shlex.quote(self.home)} --delivery {ident} to read the saved review decisions, then '
                    f'goodeye ack --store {shlex.quote(self.home)} --delivery {ident} after reading them. '
                    'Follow the GoodEye skill for each verdict. Claim unowned items before working on them. '
+                   'For kind=direction, read the bundled goodeye-brand skill and the saved direction conversation; this is a brand workflow turn, not an asset verdict. '
                    'A probe only needs acknowledgment. '
                    'Acknowledgment records receipt, not completion or approval. Deduplicate by decision_id.')
         argv = [row['executable'], 'queue', '--thread', row['thread'], '--message', message]

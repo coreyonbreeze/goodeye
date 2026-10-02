@@ -35,3 +35,13 @@ SCREENSHOTS=/tmp/goodeye-projects node tests/projects.cjs
 ```
 
 This checks empty project creation, duplicate-ID drafts and verdicts, scoped agents and history, collection assignment, immutable profile display, delayed profile saves, and phone deep links. `tests/test_projects.py` covers scoped storage and exports, legacy file paths, profile conflicts, and collection inheritance.
+
+Brand-direction integration checks (Playwright with WebKit):
+
+```sh
+node tests/direction.cjs
+```
+
+This exercises an empty profile, source references, lost-response retries, saved requests resumed by a pull agent, questions and steering, proposal adoption through strategy/concept/system, scoped revisions, source-edit conflicts, and phone drafts. Image fixtures are synthetic; this test does not call an image provider or dispatch to a live Codex conversation. `tests/test_direction.py` covers durable delivery, handoffs, project isolation, evidence/provenance requirements, and stale approval rejection.
+
+The bundled `skills/goodeye-brand` workflow must keep proposed rules separate from approved rules. Provider execution belongs to the connected agent. Do not add model credentials or arbitrary filesystem reads to browser routes.

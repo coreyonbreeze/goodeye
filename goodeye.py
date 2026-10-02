@@ -30,6 +30,7 @@ TOKEN_FILE = os.path.join(HOME, "phone-token")
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, HERE)
 from goodeye_delivery import DeliveryStore
+import goodeye_direction as direction
 PORT = int(os.environ.get("GOODEYE_PORT", "4400"))
 URL = f"http://localhost:{PORT}"
 CONTEXTS = ["linkedin-banner", "linkedin-company-cover", "linkedin-post", "x-banner", "x-post", "instagram-post", "instagram-story", "email",
@@ -162,7 +163,7 @@ def versions_of(asset_id, project=None):
     return groups.get((project, asset_id), [])
 
 
-PROFILE_FIELDS = ("logos", "colors", "typography", "voice", "references", "visual_rules", "export_rules")
+PROFILE_FIELDS = direction.FIELDS
 
 
 def project_record(name):
@@ -177,6 +178,10 @@ def project_catalog(items=None):
     out = []
     for name in sorted(names, key=str.casefold):
         p = {**project_record(name), **saved.get(name, {})}
+        p["profile"] = {**project_record(name)["profile"], **p["profile"]}
+        conversation = p.pop("direction", {})
+        requests = conversation.get("requests", [])
+        p["direction_summary"] = {"serial": conversation.get("serial", 0), "status": requests[-1]["status"] if requests else "not_started"}
         work = [i for i in items if i["project"] == name]
         p["collections"] = sorted(set(p["collections"]) | {i["collection"] for i in work if i.get("collection")}, key=str.casefold)
         p.update(pending=sum(i["status"] == "pending" for i in work), changes=sum(i["status"] == "changes" for i in work),
@@ -215,6 +220,187 @@ def save_project(body):
     saved[name] = result
     write_json(os.path.join(HOME, "projects.json"), saved)
     return result
+
+
+def load_project(name):
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("choose a named project")
+    saved = read_json(os.path.join(HOME, "projects.json"), {}) or {}
+    p = saved.get(name)
+    if p is None:
+        if not any(i["project"] == name for i in all_items()):
+            raise ValueError("unknown project")
+        p = project_record(name)
+    p["profile"] = {**project_record(name)["profile"], **p["profile"]}
+    return p
+
+
+def write_project(p):
+    saved = read_json(os.path.join(HOME, "projects.json"), {}) or {}
+    saved[p["name"]] = p
+    write_json(os.path.join(HOME, "projects.json"), saved)
+
+
+def direction_prompt(p):
+    name = shlex.quote(p["name"])
+    skill = os.path.join(HERE, "skills", "goodeye-brand", "SKILL.md")
+    return (f"Use the GoodEye brand workflow at {skill}. Work on project {p['name']!r}.\n"
+            f"GoodEye store: {HOME}\n"
+            f"Run GOODEYE_HOME={shlex.quote(HOME)} goodeye direction show --project {name} first. "
+            "Read the conversation and source paths before making anything. Recover existing approved branding and rejection reasons. "
+            "Do not assume an empty GoodEye profile means there is no established identity.\n"
+            f"Join this workflow with GOODEYE_HOME={shlex.quote(HOME)} goodeye direction join --project {name} --as brand. "
+            "If another session owns that name, follow the handoff instructions; do not replace it silently.\n"
+            "Start with product truth, audience, origin, and a defensible strategy. Ask only for missing decisions. "
+            "Use Codex image generation or the available Nano Banana workflow for raster exploration, grounded in inspected references. "
+            "Propose work in GoodEye and wait for the reviewer's steering in Brand & direction. "
+            "Keep approved rules until a proposed change is accepted. Do not generate a generic brand kit or invent approval.")
+
+
+def direction_view(name):
+    p = load_project(name)
+    s = direction.state(p)
+    store = delivery_store()
+    requests = []
+    for r in s["requests"][-30:]:
+        shown = {k: v for k, v in r.items() if k not in ("baseline", "fingerprint")}
+        if r.get("delivery"):
+            box = store.inbox(r["delivery"])
+            shown["delivery_status"] = box["status"]
+            shown["delivery_error"] = box.get("error")
+            shown["receiving_agent"] = box["watcher"]
+        requests.append(shown)
+    return {"project": name, "revision": p["revision"], "profile": p["profile"], "sources": s["sources"],
+            "requests": requests, "serial": s["serial"], "source_revision": s["source_revision"], "prompt": direction_prompt(p),
+            "skill": os.path.join(HERE, "skills", "goodeye-brand", "SKILL.md")}
+
+
+def mutate_direction(body):
+    p = load_project(body.get("project"))
+    action = body.get("action")
+    if action == "request":
+        target = body.get("agent")
+        # Check a new target only; replaying a saved request remains idempotent after a handoff.
+        seen = any(r["id"] == body.get("request_id") for r in direction.state(p)["requests"])
+        if target and not seen and not delivery_store().watcher(p["name"], target):
+            raise ValueError("that agent is no longer connected to this project; choose another or save without an agent")
+        direction.request(p, body)
+    elif action == "sources":
+        if body.get("expected_source_revision") != direction.state(p)["source_revision"]:
+            raise ValueError("source material changed; compare the saved sources before replacing them")
+        direction.state(p)["sources"] = direction.text(body.get("sources"), "sources", required=False)
+        direction.state(p)["source_revision"] += 1
+        direction.changed(p)
+    elif action == "accept":
+        r = direction.current(p, body.get("request"), editable=False)
+        if r.get("delivery"):
+            r["agent"] = delivery_store().inbox(r["delivery"])["watcher"]
+        direction.accept(p, body.get("request"), body.get("proposal"))
+    else:
+        raise ValueError("unknown direction action")
+    write_project(p)
+    return direction_view(p["name"])
+
+
+def route_direction_requests():
+    """Recoverable outbox: publish first, then record the stable delivery ID."""
+    with store_lock():
+        saved = read_json(os.path.join(HOME, "projects.json"), {}) or {}
+        store = delivery_store()
+        dirty = False
+        for p in saved.values():
+            for r in p.get("direction", {}).get("requests", []):
+                if r["status"] == "superseded":
+                    continue
+                accepted = r["status"] == "accepted"
+                delivery_field = "accepted_delivery" if accepted else "delivery"
+                if r.get(delivery_field):
+                    continue
+                target = r.get("agent")
+                if not target:
+                    owner, _, active = store.owner(p["name"], "brand-direction")
+                    target = owner if active else None
+                if not target:
+                    continue
+                event_id = project_key(p["name"]) + "-" + r["id"] + ("-accepted" if accepted else "-direction")
+                delivery = store.direct_event(p["name"], target, {
+                    "decision_id": event_id, "request": r["id"], "operation": "accepted" if accepted else "request",
+                    "skill": os.path.join(HERE, "skills", "goodeye-brand", "SKILL.md"),
+                    "next": "Read the saved conversation with goodeye direction show --project " + shlex.quote(p["name"]),
+                })
+                if delivery:
+                    r[delivery_field] = delivery
+                    r["agent"] = store.inbox(delivery)["watcher"]
+                    if r["status"] == "waiting":
+                        r["status"] = "queued"
+                    direction.changed(p)
+                    dirty = True
+        if dirty:
+            write_json(os.path.join(HOME, "projects.json"), saved)
+
+
+def validate_direction_artifacts(project, proposal):
+    if not isinstance(proposal, dict) or not isinstance(proposal.get("artifacts", []), list):
+        raise ValueError("proposal artifacts must be a list")
+    out = []
+    for a in proposal.get("artifacts", []):
+        if not isinstance(a, dict) or not isinstance(a.get("id"), str) or not ID_RE.fullmatch(a["id"]):
+            raise ValueError("each artifact needs a submitted asset id and version")
+        v = next((v for v in versions_of(a["id"], project) if v["version"] == a.get("version")), None)
+        if not v:
+            raise ValueError("artifact version does not exist in this project")
+        origin = a.get("origin")
+        if origin not in ("generated", "reference", "native"):
+            raise ValueError("artifact origin must be generated, reference, or native")
+        provenance = direction.text(a.get("provenance"), "artifact provenance")
+        prompt = direction.text(a.get("prompt", ""), "generation prompt", required=origin == "generated")
+        tool = direction.text(a.get("tool", ""), "generation tool", 200, required=origin == "generated")
+        out.append({"id": a["id"], "version": a["version"], "origin": origin, "provenance": provenance,
+                    "prompt": prompt, "tool": tool, "dir": v["dir"], "file": v["file"], "kind": v["kind"], "title": v["title"]})
+    if proposal.get("phase") == "concept" and out and not any(a["origin"] in ("generated", "reference") for a in out):
+        raise ValueError("concept exploration needs an image-tool study or an inspected existing reference")
+    return {**proposal, "artifacts": out}
+
+
+def cmd_direction(a):
+    if a.action == "show":
+        print(json.dumps(direction_view(a.project), indent=2))
+        return
+    if a.action == "join":
+        load_project(a.project)
+        runtime, thread, me = session_identity(a)
+        me = me or "brand"
+        store = delivery_store()
+        store.watch(a.project, me, runtime, thread, a.codex, a.remote)
+        store.claim(a.project, "brand-direction", me)
+        with store_lock():
+            p = load_project(a.project)
+            if not direction.state(p)["requests"]:
+                direction.request(p, {"request_id": uuid.uuid4().hex, "agent": me,
+                                     "message": "Develop this project's brand and art direction from existing evidence. Recover approved work before proposing changes."})
+            write_project(p)
+        route_direction_requests()
+        ensure_server()
+        print(json.dumps(direction_view(a.project), indent=2))
+        print(f"next: follow the goodeye-brand skill; {wait_command(a.project, me)} receives steering requests. Acknowledge deliveries after reading.")
+        return
+    with store_lock():
+        p = load_project(a.project)
+        if a.action == "sources":
+            if not a.file:
+                die("sources needs --file with source paths or links, one per line")
+            with open(a.file) as f:
+                sources = f.read()
+            mutate_direction({"project": a.project, "action": "sources", "sources": sources,
+                              "expected_source_revision": direction.state(p)["source_revision"]})
+        elif a.action == "update":
+            direction.update(p, a.request, a.status, a.message)
+            write_project(p)
+        elif a.action == "propose":
+            proposal = validate_direction_artifacts(a.project, read_json(a.file) if a.file else None)
+            direction.propose(p, a.request, proposal)
+            write_project(p)
+    print(json.dumps(direction_view(a.project), indent=2))
 
 
 def set_collection(body):
@@ -739,6 +925,7 @@ def delivery_worker():
         try:
             with LOCK:
                 store.ingest(decisions())
+            route_direction_requests()
             store.make_batches()
             store.dispatch_one()
         except (OSError, ValueError, sqlite3.Error):
@@ -832,6 +1019,13 @@ def cmd_brief(a):
     if not any(profile["profile"].values()):
         print("  No guidelines set. Do not invent established brand rules.")
     print("Collections: " + (", ".join(profile["collections"]) or "none"))
+    print("Brand workflow: goodeye direction show --project " + shlex.quote(project))
+    raw = load_project(project)
+    if direction.state(raw)["sources"]:
+        print("Brand source material:\n" + direction.state(raw)["sources"])
+    requests = direction.state(raw)["requests"]
+    if requests:
+        print("Current direction request: " + requests[-1]["id"] + " (" + requests[-1]["status"] + ")")
     print(f"Submit with --project {shlex.quote(project)} --collection NAME; every version snapshots these guidelines.")
     print("\nWatchers (agent sessions that receive this project's verdicts):")
     for w in watchers:
@@ -906,11 +1100,11 @@ def cmd_subscription(a):
         elif a.cmd == "inbox":
             box = store.inbox(a.delivery)
             print(json.dumps(box, indent=2))
-            unclaimed = sorted({d["id"] for d in box["decisions"] if d.get("kind") != "probe" and not d.get("owner")})
+            unclaimed = sorted({d["id"] for d in box["decisions"] if d.get("kind") not in ("probe", "direction") and not d.get("owner")})
             if unclaimed:
                 print(f"UNCLAIMED: {', '.join(unclaimed)}. Every watcher ({', '.join(box['watchers'])}) got these. Before you work on one, run "
                       f"`goodeye claim ID --project {shlex.quote(box['project'])} --as {box['watcher']}`. First claim wins; if yours fails, leave it to the owner.")
-            print("next: acknowledge receipt with goodeye ack, then act on each verdict using the GoodEye skill. A probe needs no asset changes.")
+            print("next: acknowledge receipt with goodeye ack, then act on each verdict using the GoodEye skill. For kind=direction, follow the goodeye-brand skill and the current saved conversation. A probe needs no asset changes.")
         elif a.cmd == "ack":
             store.acknowledge(a.delivery, agent_name(a) or a.thread or os.environ.get("CODEX_THREAD_ID"))
             print("Receipt acknowledged. This is not an approval or completion record.")
@@ -1018,6 +1212,10 @@ def wait_pull(a, store, sub, me, held, reminded):
                 for d in box["decisions"]:
                     if d.get("kind") == "probe":
                         print("PROBE: delivery test only. Acknowledge it; change nothing.\n")
+                        continue
+                    if d.get("kind") == "direction":
+                        print("BRAND DIRECTION: " + json.dumps(d))
+                        print("  next: read the goodeye-brand skill and run goodeye direction show --project " + shlex.quote(project))
                         continue
                     print_verdict(d)
                     if d.get("owner") == me:
@@ -1353,6 +1551,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             with open(os.path.join(HERE, "board.html"), "rb") as f:
                 return self.send(200, f.read(), "text/html; charset=utf-8", csp=BOARD_CSP)
+        if path == "/api/direction":
+            project = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("project", [""])[0]
+            try:
+                return self.send(200, direction_view(project))
+            except ValueError as exc:
+                return self.send(404, {"error": str(exc)})
         if path == "/api/items":
             extra = {"mkey": media_key()} if LAN and not self.host_is_local() and self.has_token() else {}
             store = delivery_store()
@@ -1417,7 +1621,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not self.allowed_host() or not self.allowed_origin():
             return self.send(403, {"error": "forbidden origin"})
         route = urllib.parse.urlparse(self.path).path
-        if route not in ("/api/decide", "/api/settings", "/api/clientlog", "/api/project", "/api/collection"):
+        if route not in ("/api/decide", "/api/settings", "/api/clientlog", "/api/project", "/api/collection", "/api/direction"):
             return self.send(404, {"error": "not found"})
         # A JSON content type forces a CORS preflight for cross-site callers, which this server never approves.
         if (self.headers.get("Content-Type") or "").split(";")[0].strip().lower() != "application/json":
@@ -1447,6 +1651,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.save_settings(body)
         with store_lock():
             try:
+                if route == "/api/direction":
+                    return self.send(200, mutate_direction(body))
                 if route == "/api/project":
                     return self.send(200, save_project(body))
                 if route == "/api/collection":
@@ -1617,7 +1823,7 @@ def decide_local(asset_id, version, verdict, feedback):
 
 def watch_code():
     """Restart the server in place when this file changes (git pull), so an update never leaves a stale server."""
-    watched = [os.path.realpath(__file__), os.path.join(HERE, "goodeye_qr.py"), os.path.join(HERE, "goodeye_delivery.py")]
+    watched = [os.path.realpath(__file__), os.path.join(HERE, "goodeye_qr.py"), os.path.join(HERE, "goodeye_delivery.py"), os.path.join(HERE, "goodeye_direction.py")]
     stamp = lambda: [os.path.getmtime(p) if os.path.exists(p) else 0 for p in watched] + [bool(load_config().get("lan"))]
     start = stamp()
     while True:
@@ -1844,7 +2050,22 @@ def main():
     br = sub.add_parser("brief", help="print what a new session needs to join or take over a project")
     br.add_argument("--project", required=True)
     br.add_argument("--as", dest="as_")
+    dr = sub.add_parser("direction", help="agent-driven brand strategy and styling conversation")
+    dr.add_argument("action", choices=["show", "join", "update", "propose", "sources"])
+    dr.add_argument("--project", required=True)
+    dr.add_argument("--request")
+    dr.add_argument("--file", help="proposal JSON, or a text file of source paths/links")
+    dr.add_argument("--status", choices=["working", "needs_input"])
+    dr.add_argument("--message")
+    dr.add_argument("--as", dest="as_")
+    dr.add_argument("--runtime", choices=["codex", "pull"])
+    dr.add_argument("--thread")
+    dr.add_argument("--codex", default="codex")
+    dr.add_argument("--remote")
     a = p.parse_args()
+    if a.cmd == "direction":
+        cmd_direction(a)
+        return
     if a.cmd in ("subscribe", "watch", "unsubscribe", "unwatch", "subscriptions", "watchers", "subscription-test", "inbox", "ack",
                  "retry-delivery", "claim", "release", "claims", "hold", "unhold", "handoff"):
         cmd_subscription(a)

@@ -42,6 +42,10 @@ When in doubt and there is more than one image, or anything will ship, use GoodE
 
 If `goodeye` is not installed, tell the user to run `./install.sh` from a clone of the GoodEye repository.
 
+## Direction workflow events
+
+An inbox entry with `kind: direction` is a brand-workflow turn, not an asset verdict. Read the bundled [goodeye-brand skill](../goodeye-brand/SKILL.md), then `goodeye direction show --project <Project>`. Follow the current request, its scope, and its source material. Acknowledge the delivery after reading; acknowledgment does not mean the work is done. Updates and proposals return to the Brand & direction window. Only the reviewer adopts proposed rules.
+
 ## Project and direction
 
 Before making or revising work, run `goodeye brief --project <Project>`. Read the current brand/art-direction profile and collections. Follow its logo, palette, type, voice, visual, motion, and export rules. If guidelines are empty, do not present invented rules as established branding.

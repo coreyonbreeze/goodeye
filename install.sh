@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Install GoodEye: the `goodeye` command and the agent skill.
+# Install GoodEye: the command, review skill, and brand workflow skill.
 #   ./install.sh                  command in ~/.local/bin, skill in ~/.claude/skills (all projects)
 #   ./install.sh --project DIR    skill in DIR/.claude/skills only (one project)
 #   BIN_DIR=/usr/local/bin ./install.sh
@@ -29,7 +29,8 @@ import sys
 import tempfile
 repo, bin_dir, skills_dir = sys.argv[1:]
 links = [(os.path.join(repo, "goodeye.py"), os.path.join(bin_dir, "goodeye")),
-         (os.path.join(repo, "skills", "goodeye"), os.path.join(skills_dir, "goodeye"))]
+         (os.path.join(repo, "skills", "goodeye"), os.path.join(skills_dir, "goodeye")),
+         (os.path.join(repo, "skills", "goodeye-brand"), os.path.join(skills_dir, "goodeye-brand"))]
 for _, target in links:
     if os.path.lexists(target) and not os.path.islink(target):
         sys.exit("Refusing to replace " + target + ": move it aside and run the installer again.")
@@ -43,6 +44,7 @@ PYLINK
 echo "Installed:"
 echo "  command  $BIN_DIR/goodeye"
 echo "  skill    $SKILLS_DIR/goodeye"
+echo "  skill    $SKILLS_DIR/goodeye-brand"
 case ":$PATH:" in *":$BIN_DIR:"*) ;; *) echo "Add $BIN_DIR to your PATH to run goodeye from anywhere." ;; esac
 command -v ffprobe >/dev/null 2>&1 || echo "Optional: install ffmpeg (ffprobe) for video frame counts on the timeline."
 echo

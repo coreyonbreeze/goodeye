@@ -30,7 +30,7 @@ Requires Python 3.9 or newer. No other dependencies. `ffprobe` (from ffmpeg) is 
 ```bash
 git clone https://github.com/coreyonbreeze/goodeye.git
 cd goodeye
-./install.sh              # `goodeye` in ~/.local/bin, the skill in ~/.claude/skills
+./install.sh              # `goodeye` in ~/.local/bin, both skills in ~/.claude/skills
 goodeye demo && goodeye open
 ```
 
@@ -61,7 +61,15 @@ agent: wakes with "APPROVED WITH NOTES ... Do NOT resubmit", applies the note, m
 
 The board opens on **Projects**. Each project has its own review queue, collections, agent activity, icon, and accent. The **All-project inbox** combines queues when you want to review everything. Existing submissions appear in their current projects automatically. Items without a project appear in **Unassigned**.
 
-Open **Brand & direction** inside a project to set its logo references, color palette, typography, writing voice, visual and motion rules, reference material, and export requirements. Logo and reference fields hold paths or links; the board does not fetch them. These guidelines appear in `goodeye brief --project NAME`. Each submitted version saves its profile revision and a copy of the guidelines. Older submissions remain unchanged. Two editors cannot silently overwrite the same profile revision.
+Open **Brand & direction** to work with an agent in a persistent project conversation. An empty profile offers **Copy agent starter**, which invokes the bundled [goodeye-brand workflow](skills/goodeye-brand/SKILL.md). Attach source paths or links to existing brand bibles, references, and approval records. The workflow recovers established identity before proposing anything new.
+
+The agent develops evidence and strategy before visual exploration. It uses its available Codex image-generation tool or Nano Banana workflow/API for raster studies, then submits the results with prompts and provenance. GoodEye itself makes no model API calls and stores no image-provider credentials. If the agent lacks those tools, it reports the blocker in the conversation.
+
+Type a request in the same window to steer the whole direction or one part: strategy, logos, colors, typography, voice, visual/motion rules, references, or exports. Select an existing project agent, or save the request until a brand agent joins. Delivery uses GoodEye's durable watcher system; retries do not duplicate a saved turn. Questions, progress, proposals, and adoption stay in the conversation. Acknowledged means the agent read the request, not that it finished.
+
+Proposals do not change approved rules. Accepting strategy continues to visual exploration; selecting a concept continues to the system. Accepting a system, import, or revision adopts its proposed fields. New steering supersedes outstanding drafts. Stale proposals cannot overwrite newer requests or profile revisions. A scoped request can change only its named field.
+
+Approved guidelines appear in `goodeye brief --project NAME`. Each submission retains its original profile snapshot. Manual profile editing remains available under **Current approved direction → Edit project settings & guidelines manually**. Source paths are instructions for the agent to inspect; the server does not read arbitrary local files from browser input.
 
 ```sh
 goodeye projects
